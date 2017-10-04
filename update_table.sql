@@ -4,12 +4,12 @@ SET mode_prime = CASE WHEN t.mode_prime = 'B' THEN 1
         WHEN t.mode_prime = 'D' THEN 3
         WHEN t.mode_prime = 'G' THEN 4
         WHEN t.mode_prime = 'J' THEN 5
-        WHEN t.mode_prime = 'M' THEN 6
-        WHEN t.mode_prime = 'O' THEN 7
-        WHEN t.mode_prime = 'P' THEN 8
-        WHEN t.mode_prime = 'S' THEN 9
-        WHEN t.mode_prime = 'T' THEN 10
-        WHEN t.mode_prime = 'W' THEN 11
+        WHEN t.mode_prime = 'P' THEN 6
+        WHEN t.mode_prime = 'W' THEN 7
+        WHEN t.mode_prime = 'M' OR
+             t.mode_prime = 'O' OR
+             t.mode_prime = 'S' OR
+             t.mode_prime = 'T' THEN 8
         ELSE 0 END,
 	trip_km = CASE WHEN t.trip_km < 999 THEN t.trip_km
         ELSE 0 END,
@@ -43,7 +43,8 @@ SET mode_prime = CASE WHEN t.mode_prime = 'B' THEN 1
         WHEN t.pd_dest > 12 AND t.pd_dest <= 16 THEN 7
         WHEN t.pd_dest > 16 AND t.pd_dest <= 46 THEN 8
         ELSE 0 END
-FROM (SELECT * FROM tts11.trip) t
+FROM (SELECT gid, mode_prime, trip_km, car_pool, hwy407, trip_purp,
+    region_ori, region_des, pd_orig, pd_dest FROM tts11.trip) t
 WHERE main.gid = t.gid
     AND (main.mode_prime IS NULL OR main.trip_km IS NULL OR
         main.car_pool IS NULL OR main.hwy407 IS NULL OR
@@ -113,7 +114,9 @@ SET age = CASE WHEN p.age < 99 THEN p.age ELSE 0 END,
         WHEN p.pd_sch > 16 AND p.pd_sch <= 46 THEN 8
         ELSE 0 END
 
-FROM (SELECT * FROM tts11.pers) p
+FROM (SELECT hhld_num, pers_num, age, n_pers_tri, n_tran_tri, sex, driver_lic,
+    tran_pass, emp_stat, stu_stat, free_park, occupation, region_emp,
+    region_sch, pd_emp, pd_sch  FROM tts11.pers) p
 WHERE main.hhld_num = p.hhld_num AND main.pers_num = p.pers_num
 	AND (main.n_pers_trips IS NULL OR main.n_tran_trips IS NULL OR
         main.sex IS NULL OR main.driver_lic IS NULL OR
@@ -153,7 +156,8 @@ SET hhld_pers = CASE WHEN h.n_person < 99 THEN h.n_person
         WHEN h.pd_hhld > 12 AND h.pd_hhld <= 16 THEN 7
         WHEN h.pd_hhld > 16 AND h.pd_hhld <= 46 THEN 8
         ELSE 0 END
-FROM (SELECT * FROM tts11.hhld) h
+FROM (SELECT hhld_num, n_person, n_vehicle, n_licence, n_emp_ft, n_emp_pt,
+    n_student, n_hhld_tri, dwell_type, region_hhl, pd_hhld FROM tts11.hhld) h
 WHERE main.hhld_num = h.hhld_num
     AND (main.hhld_pers IS NULL OR main.hhld_veh IS NULL OR
         main.hhld_lic IS NULL OR main.hhld_emp_ft IS NULL OR
@@ -205,7 +209,9 @@ SET n_go_rail = CASE WHEN r.n_go_rail < 99 THEN r.n_go_rail
         WHEN r.pd_egrs > 12 AND r.pd_egrs <= 16 THEN 7
         WHEN r.pd_egrs > 16 AND r.pd_egrs <= 46 THEN 8
         ELSE 0 END
-FROM (SELECT * FROM tts11.tran) r
+FROM (SELECT hhld_num, pers_num, trip_num, n_go_rail, n_go_bus, n_subway,
+    n_ttc_bus, n_local, n_other, use_ttc, mode_accs, mode_egrs, region_acc,
+    region_egr, pd_accs, pd_egrs FROM tts11.tran) r
 WHERE main.hhld_num = r.hhld_num AND
     main.pers_num = r.pers_num AND
     main.trip_num = r.trip_num

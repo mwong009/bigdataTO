@@ -5,10 +5,10 @@ CREATE TABLE datatable
     hhld_num integer,
     pers_num integer,
 
-    mode_prime integer, -- 0: Unknown, 1: Public Transit(B), 2: Bicycle(C),
-			-- 3: AutoDriver(D), 4: Go Rail(G), 5: Joint Go/TTC(J)
-    	-- 6: Motocycle(M), 7: Other(O), 8: Auto Passenger(P), 9: School Bus(S),
-			-- 10: Taxi(T), 11: Walk(W) (SOFTMAX)
+    mode_prime integer,
+		-- 0: Unknown, 1: Public Transit(B), 2: Bicycle(C),
+		-- 3: AutoDriver(D), 4: Go Rail(G), 5: Joint Go/TTC(J)
+    	-- 6: Auto Passenger(P), 7: Walk(W), 8: Other(O)
 
     age integer, -- 1-98: Age, 0: Unknown
     n_pers_trips integer, -- 1-98: Number of (Personal) Trips made on day
@@ -47,17 +47,17 @@ CREATE TABLE datatable
 
     occupation integer,
 		-- 0: Unknown, 1: General Office, 2: Manufacturing,
-		-- 3: Professional, 4: Retail 5: Unemployed (SOFTMAX)
+		-- 3: Professional, 4: Retail, 5: Unemployed
 
     emp_region integer,
-		sch_region integer,
-		hhld_region integer,
+	sch_region integer,
+	hhld_region integer,
     trans_accs_reg integer,
     trans_egrs_reg integer,
     trip_orig_reg integer,
     trip_dest_reg integer,
-		-- 0: Unknown,1: City of Toronto, 2: Durham,
-		-- 3: York, 4: Peel, 5: Halton, 6: Hamilton
+		-- 0: Unknown, 1: City of Toronto, 2: Durham, 3: York
+		-- 4: Peel, 5: Halton, 6: Hamilton
 
     emp_pd integer,
     sch_pd integer,
@@ -68,7 +68,7 @@ CREATE TABLE datatable
     trip_dest_pd integer,
 		-- 0: Unknown, 1: Toronto Downtown Core (PD 1),
 		-- 2: Rest of South Toronto (PD 2,4,6), 3: York (PD 3),
-    -- 4: East York (PD 5), 5: North York (PD 10-12),
+    	-- 4: East York (PD 5), 5: North York (PD 10-12),
 		-- 6: Etobicoke (PD 7-9), 7: Scarborough (PD 13-16),
 		-- 8: Rest of GTHA (PD 17-46)
 )
