@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from six.moves import cPickle
 
-def extractdata(csvName='datatable.csv'):
+def extractdata(csvName='datatable.csv', type='MNL'):
 	""" string csvName: Name of csv file. e.g. 'datatable.csv'
 	"""
 	df = pd.read_csv(csvName)
@@ -26,22 +26,26 @@ def extractdata(csvName='datatable.csv'):
 	# categorical data 1
 	x31 = df['occupation'].values
 	# one-hot
-	# x31 = np.eye(x31.max()+1)[x31][:,1:]
+	x31b = np.eye(x31.max()+1)[x31][:,1:]
 
 	# categorical data 2
 	x32 = df[['emp_region', 'sch_region', 'hhld_region', 'trans_accs_reg',
 		'trans_egrs_reg', 'trip_orig_reg', 'trip_dest_reg']].values
 	# one-hot
-	# x32 = np.eye(x32.max()+1)[x32][:,:,1:]
+	x32b = np.eye(x32.max()+1)[x32][:,:,1:]
 
 	# categorical data 3
 	x33 = df[['emp_pd', 'sch_pd', 'hhld_pd', 'trans_accs_pd', 'trans_egrs_pd',
 		'trip_orig_pd', 'trip_dest_pd']].values
 	# one-hot
-	# x33 = np.eye(x33.max()+1)[x33][:,:,1:]
+	x33b = np.eye(x33.max()+1)[x33][:,:,1:]
 
-	dataset = {'y': y, 'scale_data': x1, 'binary_data': x2,
-		'occupation': x31, 'region': x32, 'pd': x33}
+	if type == 'MNL':
+		dataset = {'y': y, 'scale_data': x1, 'binary_data': x2,
+			'occupation': x31b, 'region': x32b, 'pd': x33b}
+	else:
+		dataset = {'y': y, 'scale_data': x1, 'binary_data': x2,
+			'occupation': x31, 'region': x32, 'pd': x33}
 
 	with open('dataset.save', 'wb') as f:
 		cPickle.dump(dataset, f, protocol=cPickle.HIGHEST_PROTOCOL)
