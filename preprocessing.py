@@ -24,7 +24,7 @@ def extractdata(csvName='datatable.csv', type='MNL'):
 		'trans_egrs_m', 'trip_type']].values
 
 	# categorical data 1
-	x31 = df['occupation'].values
+	x31 = df[['occupation', 'trip_purp']].values
 	# one-hot
 	x31b = np.eye(x31.max()+1)[x31][:,1:]
 
