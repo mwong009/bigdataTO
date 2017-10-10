@@ -1,11 +1,11 @@
 import timeit
 import theano
+import pickle
 import numpy as np
 import pandas as pd
 import theano.tensor as T
 
 from numpy.random import uniform
-from six.moves import cPickle
 from theano import shared
 from optimizers import sgd, rmsprop, adadelta, nesterov_momentum
 
@@ -297,7 +297,7 @@ def main():
 
     print('loading data...')
     f = open('dataset.save', 'rb')
-    loadedObj = cPickle.load(f)
+    loadedObj = pickle.load(f)
 
     n_samples = loadedObj['mode'].shape[0]
     np.random.seed(2468)
@@ -396,7 +396,7 @@ def main():
     end_time = timeit.default_timer()
 
     with open('dataset.model', 'wb') as m:
-        cPickle.dump(best_model, m, protocol=cPickle.HIGHEST_PROTOCOL)
+        pickle.dump(best_model, m, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Optimization complete with best validation score of %.4f' %
         best_error)

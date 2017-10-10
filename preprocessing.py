@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from six.moves import cPickle
+import pickle
 
 def extractdata(csvName='datatable.csv', type='MNL'):
 	""" string csvName: Name of csv file. e.g. 'datatable.csv'
@@ -57,7 +57,7 @@ def extractdata(csvName='datatable.csv', type='MNL'):
 			'pd': x34}
 
 	with open('dataset.save', 'wb') as f:
-		cPickle.dump(dataset, f, protocol=cPickle.HIGHEST_PROTOCOL)
+		pickle.dump(dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == '__main__':
 	extractdata()
