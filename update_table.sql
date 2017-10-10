@@ -11,6 +11,12 @@ SET mode_prime = CASE WHEN t.mode_prime = 'B' THEN 1
              t.mode_prime = 'S' OR
              t.mode_prime = 'T' THEN 8
         ELSE 0 END,
+    trip_purp = CASE WHEN t.purp_dest = 'H' THEN 1
+        WHEN t.purp_dest = 'S' OR t.purp_dest = 'C' THEN 2
+        WHEN t.purp_dest = 'W' OR t.purp_dest = 'R' THEN 3
+        WHEN t.purp_dest = 'M' THEN 4
+        WHEN t.purp_dest = 'O' OR t.purp_dest = 'F' OR t.purp_dest = 'P' THEN 5
+        ELSE 0 END,
 	trip_km = CASE WHEN t.trip_km < 999 THEN t.trip_km
         ELSE 0 END,
     car_pool = CASE WHEN t.car_pool < 99 THEN t.car_pool
@@ -44,13 +50,13 @@ SET mode_prime = CASE WHEN t.mode_prime = 'B' THEN 1
         WHEN t.pd_dest > 16 AND t.pd_dest <= 46 THEN 8
         ELSE 0 END
 FROM (SELECT gid, mode_prime, trip_km, car_pool, hwy407, trip_purp,
-    region_ori, region_des, pd_orig, pd_dest FROM tts11.trip) t
+    region_ori, region_des, pd_orig, pd_dest, purp_dest FROM tts11.trip) t
 WHERE main.gid = t.gid
     AND (main.mode_prime IS NULL OR main.trip_km IS NULL OR
         main.car_pool IS NULL OR main.hwy407 IS NULL OR
         main.trip_type IS NULL OR main.trip_orig_reg IS NULL OR
         main.trip_dest_reg IS NULL OR main.trip_orig_pd IS NULL OR
-        main.trip_dest_pd IS NULL);
+        main.trip_dest_pd IS NULL OR main.trip_purp IS NULL);
 
 UPDATE datatable main
 SET age = CASE WHEN p.age < 99 THEN p.age ELSE 0 END,
