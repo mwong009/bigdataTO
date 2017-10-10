@@ -7,8 +7,6 @@ def extractdata(csvName='datatable.csv', type='MNL'):
 	"""
 	df = pd.read_csv(csvName)
 
-	y = df.mode_prime.values
-
 	# scale data
 	x1 = df[['age', 'n_pers_trips', 'n_tran_trips', 'hhld_pers',
        'hhld_veh', 'hhld_lic', 'hhld_emp_ft', 'hhld_emp_pt', 'hhld_stu',
@@ -23,29 +21,40 @@ def extractdata(csvName='datatable.csv', type='MNL'):
 		'hhld_type', 'use_ttc', 'hwy407', 'trans_accs_m',
 		'trans_egrs_m', 'trip_type']].values
 
+	# categorical data 0
+	y = df.mode_prime.values
+
 	# categorical data 1
-	x31 = df[['occupation', 'trip_purp']].values
+	x31 = df['occupation'].values
 	# one-hot
-	x31b = np.eye(x31.max()+1)[x31][:,1:]
+	x31b = np.eye(x31.max()+1)[x31][:,1:] * 2 - 1
 
 	# categorical data 2
-	x32 = df[['emp_region', 'sch_region', 'hhld_region', 'trans_accs_reg',
-		'trans_egrs_reg', 'trip_orig_reg', 'trip_dest_reg']].values
+	x32 = df['trip_purp'].values
 	# one-hot
-	x32b = np.eye(x32.max()+1)[x32][:,:,1:]
+	x32b = np.eye(x32.max()+1)[x32][:,1:] * 2 - 1
 
 	# categorical data 3
-	x33 = df[['emp_pd', 'sch_pd', 'hhld_pd', 'trans_accs_pd', 'trans_egrs_pd',
-		'trip_orig_pd', 'trip_dest_pd']].values
+	x33 = df[['emp_region', 'sch_region', 'hhld_region',
+		'trans_accs_reg', 'trans_egrs_reg', 'trip_orig_reg',
+		'trip_dest_reg']].values
 	# one-hot
-	x33b = np.eye(x33.max()+1)[x33][:,:,1:]
+	x33b = np.eye(x33.max()+1)[x33][:,:,1:] * 2 - 1
+
+	# categorical data 4
+	x34 = df[['emp_pd', 'sch_pd', 'hhld_pd', 'trans_accs_pd',
+		'trans_egrs_pd', 'trip_orig_pd', 'trip_dest_pd']].values
+	# one-hot
+	x34b = np.eye(x34.max()+1)[x34][:,:,1:] * 2 - 1
 
 	if type == 'MNL':
-		dataset = {'y': y, 'scale_data': x1, 'binary_data': x2,
-			'occupation': x31b, 'region': x32b, 'pd': x33b}
+		dataset = {'mode': y, 'scale_data': x1, 'binary_data': x2,
+			'occupation': x31b, 'trip_purp': x32b, 'region': x33b,
+			'pd': x34b}
 	else:
-		dataset = {'y': y, 'scale_data': x1, 'binary_data': x2,
-			'occupation': x31, 'region': x32, 'pd': x33}
+		dataset = {'mode': y, 'scale_data': x1, 'binary_data': x2,
+			'occupation': x31, 'trip_purp': x32, 'region': x33,
+			'pd': x34}
 
 	with open('dataset.save', 'wb') as f:
 		cPickle.dump(dataset, f, protocol=cPickle.HIGHEST_PROTOCOL)
