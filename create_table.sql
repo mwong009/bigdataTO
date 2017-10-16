@@ -44,6 +44,7 @@ CREATE TABLE datatable
     trans_accs_m integer, -- 1: Walk(W), -1: Other, 0: Unknown
     trans_egrs_m integer, -- 1: Walk(W), -1: Other, 0: Unknown
     trip_type integer, -- 1: home-based, -1: Non-home-based, 0: Other/Unknown
+    trip_purp integer, -- 1:Home, 2: School, 3: Work, 4: Leisure/shopping 5
 
     occupation integer,
 		-- 0: Unknown, 1: General Office, 2: Manufacturing,
