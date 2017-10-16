@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pickle
 
-def extractdata(csvName='datatable.csv', type='MNL'):
+def extractdata(csvName='datatable.csv', type='RBM'):
 	""" string csvName: Name of csv file. e.g. 'datatable.csv'
 	"""
 	df = pd.read_csv(csvName)
@@ -13,7 +13,8 @@ def extractdata(csvName='datatable.csv', type='MNL'):
        'hhld_trips', 'n_go_rail', 'n_go_bus', 'n_ttc_bus', 'n_ttc_sub',
        'n_local', 'n_other', 'trip_km', 'car_pool']].values
 	# normalize
-	x1 = x1/x1.max(axis=0)
+	norm = x1.max(axis=0)
+	x1 = x1/norm
 
 	# binary data
 	x2 = df[['sex', 'driver_lic', 'pass_ttc', 'pass_go', 'pass_oth',
@@ -50,14 +51,19 @@ def extractdata(csvName='datatable.csv', type='MNL'):
 	if type == 'MNL':
 		dataset = {'mode': y, 'scale_data': x1, 'binary_data': x2,
 			'occupation': x31b, 'trip_purp': x32b, 'region': x33b,
-			'pd': x34b}
+			'pd': x34b, 'norm': norm}
+
+		with open('dataset.save', 'wb') as f:
+			pickle.dump(dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
 	else:
 		dataset = {'mode': y, 'scale_data': x1, 'binary_data': x2,
 			'occupation': x31, 'trip_purp': x32, 'region': x33,
-			'pd': x34}
+			'pd': x34, 'norm': norm}
 
-	with open('dataset.save', 'wb') as f:
-		pickle.dump(dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
+		with open('dataset_rbm.save', 'wb') as f:
+			pickle.dump(dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 
 if __name__ == '__main__':
 	extractdata()
