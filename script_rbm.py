@@ -1,6 +1,7 @@
 import timeit
 import pickle
 import theano
+import pandas as pd
 import numpy as np
 import theano.tensor as T
 
@@ -10,38 +11,18 @@ from ml.optimizers import sgd, rmsprop, adadelta, nesterov_momentum
 
 def main():
     print('loading data...')
-    f = open('dataset_rbm.save', 'rb')
-    loadedObj = pickle.load(f)
+    f = open('dataset.save', 'rb')
+    loadedObj, norms = pickle.load(f)
 
     features = OrderedDict()
 
-    features['scale_data'] = loadedObj['scale_data']
-
-    features['binary_data'] = loadedObj['binary_data']
-
-    features['mode'] = np.eye(loadedObj['mode'].max()+1)[loadedObj['mode']]
-    features['mode'] = features['mode'].reshape((-1, 1,
-        features['mode'].shape[1]))
-
-    features['occupation'] = np.eye(loadedObj['occupation'].max()+1)[
-        loadedObj['occupation']]
-    features['occupation'] = features['occupation'].reshape((-1, 1,
-        features['occupation'].shape[1]))
-
-    features['trip_purp'] = np.eye(loadedObj['trip_purp'].max()+1)[
-        loadedObj['trip_purp']]
-    features['trip_purp'] = features['trip_purp'].reshape((-1, 1,
-        features['trip_purp'].shape[1]))
-
-    features['region'] = np.eye(loadedObj['region'].max()+1)[
-        loadedObj['region']]
-
-    features['pd'] = np.eye(loadedObj['pd'].max()+1)[loadedObj['pd']]
+    for name, var in loadedObj.items():
+        features[name] = var
 
     rbm = RestrictedBoltzmannMachine()
-    rbm.load_variables(features, n_hidden=120)
-    rbm.build_train_functions(lr=1e-3, k=2)
-    #rbm.build_valid_functions(chain_steps=1)
+    rbm.batch_size = 200
+    rbm.load_variables(features, n_hidden=20)
+    rbm.build_functions(lr=1e-2, k=2)
 
     print('training the model...')
 
