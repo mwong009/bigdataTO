@@ -61,7 +61,7 @@ def main(argv):
 
 	dataset = collections.OrderedDict(dataset)
 
-	norms = {'scale_norms': scale_norms, 'trip_km_norms': trip_km_norms}
+	norms = {'scale_variables': scale_norms, 'trip_km': trip_km_norms}
 
 	for name, item in dataset.items():
 		print(name, item.shape)

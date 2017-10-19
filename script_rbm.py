@@ -21,7 +21,7 @@ def main():
 
     rbm = RestrictedBoltzmannMachine()
     rbm.batch_size = 200
-    rbm.load_variables(features, n_hidden=20)
+    rbm.load_variables(features, norms, n_hidden=20, validate=['mode_prime'])
     rbm.build_functions(lr=1e-2, k=2)
 
     print('training the model...')
