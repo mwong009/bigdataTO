@@ -140,14 +140,14 @@ class RestrictedBoltzmannMachine(object):
         # energy term to sum over hidden axis
         energy = b_k + T.sum(T.nnet.softplus(vx_c), axis=-1)
 
-        return energy, valid_feature, target, visibles
+        return energy, valid_feature, target
 
     def errors(self, visibles, validate_terms):
 
         output_error = []
         for valid_term in validate_terms:
 
-            e, valid_feature, target, visibles = self.conditional_energy(
+            e, valid_feature, target = self.conditional_energy(
                 visibles, validate_terms, valid_term)
 
             if valid_feature['type']  == 'category':
@@ -162,9 +162,17 @@ class RestrictedBoltzmannMachine(object):
             elif valid_feature['type']  == 'scale':
                 # for scale features (n, feature)
                 y = target.flatten() * self.norms[valid_feature['name']]
-                # y_out = T.nnet.relu(energy).flatten()
-                gibbs_output = self.gibbs_vhv(visibles)
-                y_out = T.nnet.relu(gibbs_output[2:2+len(visibles)][
+
+                masked_visibles = []
+                for v, W in zip(visibles, self.W_params):
+                    if W.name in validate_terms:
+                        masked_visibles.append(shared(np.zeros(v.shape.eval(),
+                                dtype=theano.config.floatX),
+                            name=W.name, borrow=True))
+                    else:
+                        masked_visibles.append(v)
+                gibbs_output = self.gibbs_vhv(masked_visibles)
+                y_out = T.nnet.relu(gibbs_output[2:2+len(masked_visibles)][
                     valid_feature['loc']]).flatten() * self.norms[
                     valid_feature['name']]
                 error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
@@ -192,7 +200,7 @@ class RestrictedBoltzmannMachine(object):
         output_prediction = []
         for valid_term in validate_terms:
 
-            e, valid_feature, target, visibles = self.conditional_energy(
+            e, valid_feature, target = self.conditional_energy(
                 visibles, validate_terms, valid_term)
 
             if valid_feature['type']  == 'category':
@@ -207,9 +215,17 @@ class RestrictedBoltzmannMachine(object):
             elif valid_feature['type']  == 'scale':
                 # for scale features (n, feature)
                 y = target.flatten() * self.norms[valid_feature['name']]
-                # y_out = T.nnet.relu(energy).flatten()
-                gibbs_output = self.gibbs_vhv(visibles)
-                y_out = T.nnet.relu(gibbs_output[2:2+len(visibles)][
+
+                masked_visibles = []
+                for v, W in zip(visibles, self.W_params):
+                    if W.name in validate_terms:
+                        masked_visibles.append(shared(np.zeros(v.shape.eval(),
+                                dtype=theano.config.floatX),
+                            name=W.name, borrow=True))
+                    else:
+                        masked_visibles.append(v)
+                gibbs_output = self.gibbs_vhv(masked_visibles)
+                y_out = T.nnet.relu(gibbs_output[2:2+len(masked_visibles)][
                     valid_feature['loc']]).flatten() * self.norms[
                     valid_feature['name']]
 
@@ -565,14 +581,9 @@ class RestrictedBoltzmannMachine(object):
                     preditions = np.asarray(preditions).reshape(-1,
                         len(self.validate_terms*2))
 
-                    for i, name in enumerate(zip(self.validate_terms)):
+                    for i, name in enumerate(self.validate_terms):
 
                         self.data_output[name] = preditions[:,i*2]
                         self.data_output[name+'_pred'] = preditions[:,i*2+1]
 
-                    self.data_output.to_csv(path_or_buf='predictions.csv')
-
-        df = pd.DataFrame(self.output_samples)
-        df.to_csv('predictions.csv')
-        # with open('model.output', 'wb') as m:
-        #     pickle.dump(samples, m, protocol=pickle.HIGHEST_PROTOCOL)
+                    self.data_output.to_csv('predictions.csv')
