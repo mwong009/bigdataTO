@@ -563,10 +563,9 @@ class RestrictedBoltzmannMachine(object):
 
                     preditions = self.predict_rbm()
                     preditions = np.asarray(preditions).reshape(-1,
-                        len(self.validate_terms.keys()*2))
+                        len(self.validate_terms*2))
 
-                    for i, (name, item) in enumerate(zip(
-                        self.validate_terms.items())):
+                    for i, name in enumerate(zip(self.validate_terms)):
 
                         self.data_output[name] = preditions[:,i*2]
                         self.data_output[name+'_pred'] = preditions[:,i*2+1]
