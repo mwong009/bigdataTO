@@ -115,10 +115,6 @@ class RestrictedBoltzmannMachine(object):
                         valid_feature['name'] = name
                         valid_feature['loc'] = i
                         target = v
-                        v = shared(np.zeros(v.shape.eval(),
-                                dtype=theano.config.floatX),
-                            name=name, borrow=True)
-                        visibles[i] = v
 
                     else:
                         valid_feature['type'] = t
@@ -577,13 +573,13 @@ class RestrictedBoltzmannMachine(object):
                         pickle.dump(best_model, b,
                             protocol=pickle.HIGHEST_PROTOCOL)
 
-                    preditions = self.predict_rbm()
-                    preditions = np.asarray(preditions).reshape(-1,
-                        len(self.validate_terms*2))
+                    predictions = self.predict_rbm()
+                    predictions = np.asarray(predictions).reshape(
+                        len(self.validate_terms)*2, -1).T
 
                     for i, name in enumerate(self.validate_terms):
 
-                        self.data_output[name] = preditions[:,i*2]
-                        self.data_output[name+'_pred'] = preditions[:,i*2+1]
+                        self.data_output[name] = predictions[:,i*2]
+                        self.data_output[name+'_pred'] = predictions[:,i*2+1]
 
                     self.data_output.to_csv('predictions.csv')
