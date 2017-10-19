@@ -3,7 +3,9 @@ import pickle
 import pandas as pd
 import numpy as np
 import theano.tensor as T
+import theano.tensor.shared_randomstreams as rs
 
+from collections import OrderedDict
 from theano import shared
 from numpy.random import seed, permutation, uniform
 from ml.optimizers import sgd, rmsprop, adadelta, nesterov_momentum
@@ -13,9 +15,9 @@ class RestrictedBoltzmannMachine(object):
 
         ''' model hyperparameters '''
         self.random_seed = 999
-        self.batch_size = 1000
+        self.batch_size = 200
         self.split = 0.7
-        self.theano_rng = T.shared_randomstreams.RandomStreams(2468)
+        self.theano_rng = rs.RandomStreams(self.random_seed)
         self.optimizer = optimizers
 
         ''' Theano Tensor variables '''
@@ -86,82 +88,148 @@ class RestrictedBoltzmannMachine(object):
         self.params.extend([W, vbias])
         self.masks.extend([W_mask, vbias_mask])
 
-    def discriminative_cost(self, visibles, samples):
-        '''
-            P(y|x) = 1/Z * exp(v_k + sum_i(ln(1+exp(W_ki + h_k + x_j W_ij))))
-        '''
-        vx_c = self.hbias[0]
-        visible_term = 0
-
-        for v, W, vbias, size in zip(samples, self.W_params, self.vbias,
-            self.num_features):
-
-            # transform weight vector back into a matrix/tensor
-            W = W.reshape(size + (self.num_hidden,))
-            if W.name == 'mode_prime':
-                # W (feature, category, hidden)
-                vx_c += W
-                visible_term += vbias
-
-            else:
-                if W.ndim == 2:
-                    # (batch, 'x', hidden)
-                    vx_c += T.dot(v, W).dimshuffle(0, 'x', 1)
-
-                elif W.ndim == 3:
-                    # (batch, 'x', hidden)
-                    vx_c += T.tensordot(v, W, axes=[[1,2], [0,1]]).dimshuffle(
-                        0, 'x', 1)
-
-        hidden_term = T.sum(T.log(1 + T.exp(vx_c)), axis=-1)
-        energy = visible_term + hidden_term
-
-        prob = T.nnet.softmax(energy)
-
-        for v, W in zip(visibles, self.W_params):
-            if W.name == 'mode_prime':
-                # negative log likelihood
-                y = T.argmax(v, axis=-1)
-                cost = -T.mean(T.log(prob)[T.arange(y.shape[0]), y])
-
-        return cost
-
-    def pred(self, visibles, name):
+    def conditional_energy(self, visibles, validate_terms, valid_term):
         '''
             P(y|x) = 1/Z * exp(b_k + sum_i(ln(1+exp(x_j*W_ij + c_i + W_ki))))
             vx_c = x_j*W_ij + c_i + W_ki
         '''
-        vx_c = self.hbias[-1]
-        energy = 0
+        valid_feature = {}
+        vx_c = self.hbias[-1] # vx_c: (hid,)
+        b_k = 0
 
-        for v, W, vbias, size in zip(visibles, self.W_params, self.vbias,
-            self.num_features):
+        for i, (v, W, vbias, size, t) in enumerate(zip(visibles,
+            self.W_params, self.vbias, self.shapes, self.types)):
 
-            W_name = W.name
+            # get name of variable
+            name = W.name
+
+
             # transform weight vector back into a matrix/tensor
             W = W.reshape(size + (self.num_hidden,))
             vbias = vbias.reshape(size)
 
-            if W.ndim == 2:
-                # for weights with 2 dimensions (feature, hidden)
-                xW = T.dot(v, W).dimshuffle(0, 'x', 1)
+            if name in validate_terms:
+                if name == valid_term:
+                    if t == 'scale':
+                        valid_feature['type'] = t
+                        valid_feature['name'] = name
+                        valid_feature['loc'] = i
+                        target = v
+                        v = shared(np.zeros(v.shape.eval(),
+                                dtype=theano.config.floatX),
+                            name=name, borrow=True)
+                        visibles[i] = v
 
-            elif W.ndim == 3:
-                # for weights with 3 dimensions (feature, category, hidden)
-                xW = T.tensordot(v, W, axes=[[1,2],[0,1]]).dimshuffle(0, 'x', 1)
-
-            if W_name == name:
-                vx_c += W
-                energy += vbias
+                    else:
+                        valid_feature['type'] = t
+                        valid_feature['name'] = name
+                        vx_c += W
+                        b_k += vbias
+                        target = v
 
             else:
-                vx_c += xW
+                if t == 'category':
+                    # for category features (n, 'x', hidden)
+                    vx_c += T.tensordot(v, W, axes=[[1,2], [0,1]]
+                        ).dimshuffle(0, 'x', 1)
 
-        energy += T.sum(T.log(1+T.exp(vx_c)), axis=-1)
-        prob = T.nnet.softmax(energy)
+                else:
+                    # for scale and binary features (n, 'x', hidden)
+                    vx_c += T.dot(v, W).dimshuffle(0, 'x', 1)
 
-        return [prob]
+        # energy term to sum over hidden axis
+        energy = b_k + T.sum(T.nnet.softplus(vx_c), axis=-1)
 
+        return energy, valid_feature, target, visibles
+
+    def errors(self, visibles, validate_terms):
+
+        output_error = []
+        for valid_term in validate_terms:
+
+            e, valid_feature, target, visibles = self.conditional_energy(
+                visibles, validate_terms, valid_term)
+
+            if valid_feature['type']  == 'category':
+                # for categorical features (n, feature, category)
+                probabilities = T.nnet.softmax(e)
+                y = T.argmax(target, axis=-1).flatten()
+                p = T.argmax(probabilities, axis=-1).flatten()
+                error = T.mean(T.neq(y, p)) # accuracy
+
+                print(valid_feature['name'], p.eval(), y.eval())
+
+            elif valid_feature['type']  == 'scale':
+                # for scale features (n, feature)
+                y = target.flatten() * self.norms[valid_feature['name']]
+                # y_out = T.nnet.relu(energy).flatten()
+                gibbs_output = self.gibbs_vhv(visibles)
+                y_out = T.nnet.relu(gibbs_output[2:2+len(visibles)][
+                    valid_feature['loc']]).flatten() * self.norms[
+                    valid_feature['name']]
+                error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
+
+                print(valid_feature['name'], y_out.eval(), y.eval())
+
+            elif valid_feature['type'] == 'binary':
+                # for binary features (n, feature)
+                y = target.flatten()
+                prob = T.nnet.sigmoid(e)
+                p = T.ceil(prob * 3) - 2.
+                error = T.mean(T.neq(p, y)) # accuracy
+
+                print(valid_feature['name'], p.eval(), y.eval())
+
+            else:
+                raise NotImplementedError()
+
+            output_error.append(error)
+
+        return output_error
+
+    def prediction(self, visibles, validate_terms):
+
+        output_prediction = []
+        for valid_term in validate_terms:
+
+            e, valid_feature, target, visibles = self.conditional_energy(
+                visibles, validate_terms, valid_term)
+
+            if valid_feature['type']  == 'category':
+                # for categorical features (n, feature, category)
+                probabilities = T.nnet.softmax(e)
+                y = T.argmax(target, axis=-1).flatten()
+                p = T.argmax(probabilities, axis=-1).flatten()
+
+                output_prediction.extend([y])
+                output_prediction.extend([p])
+
+            elif valid_feature['type']  == 'scale':
+                # for scale features (n, feature)
+                y = target.flatten() * self.norms[valid_feature['name']]
+                # y_out = T.nnet.relu(energy).flatten()
+                gibbs_output = self.gibbs_vhv(visibles)
+                y_out = T.nnet.relu(gibbs_output[2:2+len(visibles)][
+                    valid_feature['loc']]).flatten() * self.norms[
+                    valid_feature['name']]
+
+                output_prediction.extend([y])
+                output_prediction.extend([y_out])
+
+            elif valid_feature['type'] == 'binary':
+                # for binary features (n, feature)
+                y = target.flatten()
+                prob = T.nnet.sigmoid(e)
+                p = T.ceil(prob * 3) - 2.
+                error = T.mean(T.neq(p, y)) # accuracy
+
+                output_prediction.extend([y])
+                output_prediction.extend([p])
+
+            else:
+                raise NotImplementedError()
+
+        return output_prediction
 
     def free_energy(self, visibles):
         ''' free energy
@@ -173,7 +241,7 @@ class RestrictedBoltzmannMachine(object):
         visible_term = 0
 
         for v, W, vbias, size in zip(visibles, self.W_params, self.vbias,
-            self.num_features):
+            self.shapes):
 
             # transform weight vector back into a matrix/tensor
             W = W.reshape(size + (self.num_hidden,))
@@ -196,7 +264,7 @@ class RestrictedBoltzmannMachine(object):
 
         pre_sigmoid_h1 = self.hbias[-1]
 
-        for v, W, size in zip(v0_samples, self.W_params, self.num_features):
+        for v, W, size in zip(v0_samples, self.W_params, self.shapes):
 
             # transform weight vector back into a matrix/tensor
             W = W.reshape(size + (self.num_hidden,))
@@ -211,58 +279,85 @@ class RestrictedBoltzmannMachine(object):
 
         h1_mean = T.nnet.sigmoid(pre_sigmoid_h1)
         h1_samples = self.theano_rng.binomial(size=h1_mean.shape, n=1,
-            p=h1_mean, dtype=theano.config.floatX)
+           p=h1_mean, dtype=theano.config.floatX)
+        # h1_samples = T.nnet.relu(self.theano_rng.normal(size=h1_mean.shape,
+        #    avg=pre_sigmoid_h1, std=1.0, dtype=theano.config.floatX))
 
         return [pre_sigmoid_h1, h1_mean, h1_samples]
 
     def sample_v_given_h(self, h0_samples):
 
-        pre_activation_v1 = []
+        v1_preactivation = []
         v1_mean = []
         v1_samples = []
 
-        for W, vbias, size in zip(self.W_params, self.vbias, self.num_features):
+        for W, vbias, size, t in zip(self.W_params, self.vbias, self.shapes, self.types):
 
             # transform weight vector back into a matrix/tensor
+            name = W.name
             W = W.reshape(size + (self.num_hidden,))
             vbias = vbias.reshape(size)
 
-            if W.ndim == 2:
-                # for weights with 2 dimensions (feature, hidden)
-                pre_sigmoid_v1 = T.dot(h0_samples, W.T) + vbias
-                pre_activation_v1.append(pre_sigmoid_v1)
-
-                # sigmoid neural activation for 2-D matrix
-                v1_mean.append(T.nnet.sigmoid(pre_sigmoid_v1))
-
-            elif W.ndim == 3:
-                # for weights with 3 dimensions (feature, category, hidden)
-                pre_softmax_v1 = T.dot(h0_samples, W.dimshuffle(0,2,1))
-                pre_softmax_v1 += vbias
-                pre_activation_v1.append(pre_softmax_v1)
+            if t == 'category':
+                # for categorical features (feature, category, hidden)
+                W = W.dimshuffle(0,2,1)
+                preactivation = T.dot(h0_samples, W) + vbias
+                v1_preactivation.append(preactivation)
 
                 # softmax neural activation for 3-D tensors
-                (d1, d2, d3) = pre_softmax_v1.shape
-                v1_mean.append(T.nnet.softmax(pre_softmax_v1.reshape(
-                    (d1 * d2, d3))).reshape((d1, d2, d3)))
+                (d1, d2, d3) = preactivation.shape
+                preactivation = preactivation.reshape((d1 * d2, d3))
+                activation = T.nnet.softmax(preactivation)
+                v1_mean.append(activation.reshape((d1, d2, d3)))
 
-        for v, mean in zip(self.visibles, v1_mean):
+            elif t == 'scale':
+                W = W.T
+                preactivation = T.dot(h0_samples, W) + vbias
+                v1_preactivation.append(preactivation)
+                v1_mean.append(preactivation)
 
-            if mean.ndim == 2:
-                # for tensors with 2 dimensions (batch, feature)
-                if v.name == 'binary_variables':
-                    # scale binary samples to [-1, 1]
-                    v1_samples.append(T.ceil(3 * mean) - 2.)
-                else:
-                    # scale variables use mean
-                    v1_samples.append(mean)
+            elif t =='binary':
+                W = W.T
+                preactivation = T.dot(h0_samples, W) + vbias
+                v1_preactivation.append(preactivation)
+                v1_mean.append(T.nnet.sigmoid(preactivation))
 
-            elif mean.ndim == 3:
-                # for tensors with 3 dimensions (batch, feature, category)
-                v1_samples.append(self.theano_rng.multinomial(pvals=mean,
-                    dtype=theano.config.floatX))
+            else:
+                raise NotImplementedError()
 
-        return [pre_activation_v1, v1_mean, v1_samples]
+        for t, mean, pre in zip(self.types, v1_mean, v1_preactivation):
+
+            if t == 'category':
+                # for categorical features (n, feature, category)
+                v1_sample = self.theano_rng.multinomial(pvals=mean,
+                    dtype=theano.config.floatX)
+                v1_samples.append(v1_sample)
+
+            elif t == 'scale':
+                # for scale features (n, feature)
+                v1_sample = T.nnet.relu(
+                    self.theano_rng.normal(size=mean.shape, avg=pre,
+                        std=T.nnet.sigmoid(mean),
+                        dtype=theano.config.floatX))
+                # v1_sample = mean
+                v1_samples.append(v1_sample)
+
+            elif t =='binary':
+                # for binary features (n, feature)
+                # flip features between [-1, 1]
+                v1_sample = self.theano_rng.binomial(size=mean.shape,
+                    p=mean, dtype=theano.config.floatX) * 2 - 1
+
+                # flip features between [0, [-1, 1]]
+                v1_sample = self.theano_rng.binomial(size=mean.shape,
+                    p=T.abs_(mean*2-1), dtype=theano.config.floatX) * v1_sample
+
+                v1_samples.append(v1_sample)
+
+            else:
+                raise NotImplementedError()
+
+        return [v1_preactivation, v1_mean, v1_samples]
 
     def gibbs_hvh(self, h0_samples):
         ''' This function implements one step of Gibbs sampling,
@@ -280,15 +375,7 @@ class RestrictedBoltzmannMachine(object):
 
         return [h1_means, h1_samples] + v1_means + v1_samples
 
-    def get_v1_samples(self, v0_samples):
-
-        output = self.gibbs_vhv(v0_samples)
-        v1_means = output[2: len(v0_samples)]
-        v1_samples = output[(2+len(v0_samples)):]
-
-        return v1_means, v1_samples
-
-    def get_cost_updates(self, lr=1e-3, persistent=None, k=20):
+    def get_cost_updates(self, lr, persistent=None, k=1):
 
         # perform positive phase
         _, ph_mean, ph_sample = self.sample_h_given_v(self.visibles)
@@ -305,8 +392,8 @@ class RestrictedBoltzmannMachine(object):
             n_steps=k, name='gibbs_hvh')
 
         # not that we only need the sample at the end of the chain
-        nv_samples = gibbs_chain[num_tensors: 2*num_tensors]
         nv_means = gibbs_chain[:num_tensors]
+        nv_samples = gibbs_chain[num_tensors: 2*num_tensors]
 
         chain_end_samples = []
         chain_end_means = []
@@ -320,40 +407,41 @@ class RestrictedBoltzmannMachine(object):
         data_cost = T.mean(self.free_energy(self.visibles))
         cost = data_cost - model_cost
 
-        # discriminative RBM cost
-        #disc_cost = self.discriminative_cost(self.visibles, chain_end_samples)
-
         grads = T.grad(cost, self.params, consider_constant=chain_end_samples)
         opt = self.optimizer(self.params, masks=self.masks)
         updates = opt.updates(self.params, grads, lr)
         for update in updates:
             rbm_updates[update[0]] = update[1]
 
-        monitoring_cost = self.reconstruction_cost(chain_end_means)
+        monitoring_cost = self.reconstruction_cost(chain_end_means,
+            chain_end_samples)
         return monitoring_cost, rbm_updates
 
-    def reconstruction_cost(self, chain_end_means):
+    def reconstruction_cost(self, chain_end_means, chain_end_samples):
         """ reconstruction distance using L_2 (Euclidean distance) norm
         """
         cost = 0
-        for samples, means in zip(self.visibles, chain_end_means):
-            if samples.ndim == 2:
+        for v, mean, sample, t in zip(self.visibles, chain_end_means,
+            chain_end_samples, self.types):
+            if t == 'scale':
                 # L2 loss
-                cost += T.mean((samples - means).norm(2))
-            elif samples.ndim == 3:
-                # cross-entropy loss
-                cost -= T.mean(T.sum(samples * T.log(means) +
-                    (1-samples) * T.log(1-means), axis=-1))
-
+                cost += T.mean((v - mean).norm(2))
+            elif t == 'binary':
+                cost += T.mean((v - sample).norm(2))
+            elif t == 'category':
+                cost -= T.mean(T.sum(v * T.log(mean) +
+                    (1-v) * T.log(1-mean), axis=-1))
+            else:
+                raise NotImplementedError()
         return cost
 
     def build_functions(self, lr=1e-3, k=5):
 
         print('building symbolic functions...')
 
-        cost, updates = self.get_cost_updates(lr=lr,
-            persistent=None, k=k)
+        cost, updates = self.get_cost_updates(lr, None, k)
 
+        # theano training function
         self.train_rbm = theano.function([self.index],
             outputs=cost,
             updates=updates,
@@ -366,52 +454,43 @@ class RestrictedBoltzmannMachine(object):
             allow_input_downcast=True,
             on_unused_input='ignore')
 
-        v1_means, v1_samples = self.get_v1_samples(self.valid_x)
-
-        accuracies = []
-        # for i, valid_y in zip(self.valid_y_idx, self.valid_y):
-        #     target = T.argmax(valid_y, axis=-1)
-        #     pred = T.argmax(v1_samples[i], axis=-1)
-        #     accuracies.append(T.mean(T.neq(pred, target)))
-
-        probs = self.pred(self.valid_x, 'mode_prime')
-        for prob, valid_y in zip(probs, self.valid_y):
-            target = T.argmax(valid_y, axis=-1).flatten()
-            pred = T.argmax(prob, axis=-1)
-            accuracies.append(T.mean(T.neq(pred, target)))
-
         self.valid_rbm = theano.function([],
-            outputs=accuracies,
+            outputs=self.errors(self.valid_visibles, self.validate_terms),
             name='valid_rbm',
             allow_input_downcast=True,
             on_unused_input='ignore')
 
-        self.output_samples = theano.function([],
-            outputs=probs,
-            name='output_samples',
+        self.predict_rbm = theano.function([],
+            outputs=self.prediction(self.valid_visibles, self.validate_terms),
+            name='predict_rbm',
             allow_input_downcast=True,
             on_unused_input='ignore')
 
-    def load_variables(self, features, n_hidden):
+    def load_variables(self, features, norms, n_hidden, validate):
 
         seed(self.random_seed)
         self.train_visibles = []    # list of shared variables to inputs
-        self.valid_x = []           # list of shared variables to inputs
-        self.valid_y = []
-        self.valid_y_idx = []
-        self.valid_y_names = []
-        self.num_features = []      # list of number of features in each input
+        self.valid_visibles = []    # list of shared variables to inputs
+        self.shapes = []            # list of number of features
+        self.types = []             # list of type for each feature
+
         self.num_samples = 0        # total number of samples used
         self.num_hidden = n_hidden
         train_idx = None            # indexing array
         valid_idx = None
 
+        self.norms = norms
+        self.validate_terms = validate
+
         print('loading variables...')
-        for i, (name, feature) in enumerate(features.items()):
-            print(i, name, feature.shape)
-            feature = np.asarray(feature, dtype=theano.config.floatX)
+
+        for name, d in features.items():
+            print(name, d['value'].shape, d['type'])
+
+            feature = np.asarray(d['value'], dtype=theano.config.floatX)
             self.num_samples = max(self.num_samples, feature.shape[0])
-            self.num_features.append(feature.shape[1:])
+            self.shapes.append(feature.shape[1:])
+            self.types.append(d['type'])
 
             if train_idx is None:
                 train_idx = permutation(self.num_samples)[
@@ -421,31 +500,27 @@ class RestrictedBoltzmannMachine(object):
                     int(self.split * self.num_samples):]
 
             self.train_visibles.append(shared(feature[train_idx]))
+            self.valid_visibles.append(shared(feature[valid_idx]))
 
-            self.add_visible_unit(name, self.num_features[-1], self.num_hidden)
-
-            if name == 'mode_prime':
-                self.valid_y_idx.append(i)
-                self.valid_y_names.append(name)
-                self.valid_y.append(shared(feature[valid_idx]))
-                feature = np.zeros(feature.shape, dtype=theano.config.floatX)
-            self.valid_x.append(shared(feature[valid_idx]))
+            self.add_visible_unit(name, self.shapes[-1], self.num_hidden)
 
         self.num_train_batches = train_idx.shape[0] // self.batch_size
         self.num_valid_batches = valid_idx[0] // self.batch_size
+
+        print('validate terms:', self.validate_terms)
 
     def initialize_session(self):
         self.patience = 5 * self.num_train_batches
         self.patience_increase = 2
         self.threshold = 0.998
         self.validation_freq = self.num_train_batches // 10
-        self.best_model = None
-        self.best_error = np.inf
+        self.best_error = np.asarray([np.inf])
         self.done_looping = False
         self.epoch = 0
         self.epoch_score = []
         self.data_log = pd.DataFrame()
         self.data_log.index.name = 'iteration'
+        self.data_output = pd.DataFrame()
 
     def one_train_step(self):
         self.epoch += 1
@@ -466,13 +541,39 @@ class RestrictedBoltzmannMachine(object):
                 self.data_log.to_csv('training_stats.csv')
 
             if (iter + 1) % (self.validation_freq * 1) == 0:
-                this_error = self.valid_rbm()
-                for name, error in zip(self.valid_y_names, this_error):
-                    self.data_log.loc[iter, name] = np.round(error, 5)
-                    print(name, 'validation error',
-                        '{0:.3f}%'.format(100 * np.round(error, 5)))
+                errors = self.valid_rbm()
+
+                for valid_term, error in zip(self.validate_terms, errors):
+                    self.data_log.loc[iter, valid_term] = np.round(error, 3)
+                    print(valid_term, 'validation error',
+                        '{0:.3f}'.format(np.round(error, 3)))
+
                 self.data_log.to_csv('training_stats.csv')
 
-        output = self.output_samples()
-        with open('model.output', 'wb') as m:
-            pickle.dump(samples, m, protocol=pickle.HIGHEST_PROTOCOL)
+                errors = np.asarray(errors)
+
+                if (errors < (self.threshold * self.best_error)).any():
+                    self.best_error = errors
+                    best_model = [self.hbias, self.vbias, self.W_params,
+                        self.params, self.masks]
+
+                    with open('model.save', 'wb') as b:
+                        pickle.dump(best_model, b,
+                            protocol=pickle.HIGHEST_PROTOCOL)
+
+                    preditions = self.predict_rbm()
+                    preditions = np.asarray(preditions).reshape(-1,
+                        len(self.validate_terms.keys()*2))
+
+                    for i, (name, item) in enumerate(zip(
+                        self.validate_terms.items())):
+
+                        self.data_output[name] = preditions[:,i*2]
+                        self.data_output[name+'_pred'] = preditions[:,i*2+1]
+
+                    self.data_output.to_csv(path_or_buf='predictions.csv')
+
+        df = pd.DataFrame(self.output_samples)
+        df.to_csv('predictions.csv')
+        # with open('model.output', 'wb') as m:
+        #     pickle.dump(samples, m, protocol=pickle.HIGHEST_PROTOCOL)

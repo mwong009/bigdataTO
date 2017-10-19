@@ -14,19 +14,15 @@ def main():
     f = open('dataset.save', 'rb')
     loadedObj, norms = pickle.load(f)
 
-    features = OrderedDict()
-
-    for name, var in loadedObj.items():
-        features[name] = var
-
     rbm = RestrictedBoltzmannMachine()
-    rbm.batch_size = 200
-    rbm.load_variables(features, norms, n_hidden=20, validate=['mode_prime'])
-    rbm.build_functions(lr=1e-2, k=2)
+    rbm.batch_size = 50
+    rbm.load_variables(loadedObj, norms, n_hidden=60,
+        validate=['mode_prime', 'trip_purp', 'trip_km'])
+    rbm.build_functions(lr=1e-3, k=1)
 
     print('training the model...')
 
-    num_epochs = 1
+    num_epochs = 10
     rbm.initialize_session()
     start_time = timeit.default_timer()
     while (rbm.epoch < num_epochs):

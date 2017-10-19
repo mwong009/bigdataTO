@@ -23,10 +23,9 @@ def main(argv):
 		'hhld_type', 'use_ttc', 'hwy407', 'trans_accs_m', 'trans_egrs_m',
 		'trip_type']].values
 
-	occupation_variables = df[['occupation']].values
+	job_variables = df[['occupation']].values
 
-	occupation_variables = np.eye(occupation_variables.max()+1)[
-		occupation_variables]
+	job_variables = np.eye(job_variables.max()+1)[job_variables]
 
 	region_variables = df[['emp_region', 'sch_region', 'hhld_region',
 		'trans_accs_reg', 'trans_egrs_reg', 'trip_orig_reg',
@@ -50,23 +49,21 @@ def main(argv):
 	mode_prime = df[['mode_prime']].values
 	mode_prime = np.eye(mode_prime.max()+1)[mode_prime]
 
-	dataset = [('mode_prime', mode_prime),
-		('trip_purp', trip_purp),
-		('trip_km', trip_km),
-		('scale_variables', scale_variables),
-		('binary_variables', binary_variables),
-		('occupation_variables', occupation_variables),
-		('region_variables', region_variables),
-		('pd_variables', pd_variables)]
+	dataset = [('mode_prime', {'value': mode_prime, 'type': 'category'}),
+		('trip_purp', {'value': trip_purp, 'type': 'category'}),
+		('trip_km', {'value': trip_km, 'type': 'scale'}),
+		('scale_variables', {'value': scale_variables, 'type': 'scale'}),
+		('binary_variables', {'value': binary_variables, 'type': 'binary'}),
+		('job_variables', {'value': job_variables, 'type': 'category'}),
+		('region_variables', {'value': region_variables, 'type': 'category'}),
+		('pd_variables', {'value': pd_variables, 'type': 'category'})]
 
 	dataset = collections.OrderedDict(dataset)
 
 	norms = {'scale_variables': scale_norms, 'trip_km': trip_km_norms}
 
 	for name, item in dataset.items():
-		print(name, item.shape)
-	for name, item in norms.items():
-		print(name, item)
+		print(name, item['value'].shape, item['type'])
 
 	with open('dataset.save', 'wb') as f:
 		pickle.dump((dataset, norms), f, protocol=pickle.HIGHEST_PROTOCOL)
