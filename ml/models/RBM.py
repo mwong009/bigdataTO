@@ -528,7 +528,7 @@ class RestrictedBoltzmannMachine(object):
         self.patience_increase = 2
         self.threshold = 0.998
         self.validation_freq = self.num_train_batches // 10
-        self.best_error = np.asarray([np.inf])
+        self.best_errors = np.asarray(len(self.validate_terms)*[np.inf])
         self.done_looping = False
         self.epoch = 0
         self.epoch_score = []
@@ -566,18 +566,23 @@ class RestrictedBoltzmannMachine(object):
 
                 errors = np.asarray(errors)
 
-                if (errors < (self.threshold * self.best_error)).any():
-                    self.best_error = errors
+                update_threshold = 0
+                for i, (this_error, best_error) in enumerate(zip(errors,
+                    self.best_errors * self.threshold)):
+                    if this_error < best_error:
+                        self.best_errors[i] = this_error
+                        update_threshold += 1
+
+                if update_threshold > 0:
                     best_model = [self.hbias, self.vbias, self.W_params,
                         self.params, self.masks]
-
                     with open('model.save', 'wb') as b:
                         pickle.dump(best_model, b,
                             protocol=pickle.HIGHEST_PROTOCOL)
 
                     predictions = self.predict_rbm()
                     predictions = np.asarray(predictions).reshape(
-                        len(self.validate_terms)*2, -1).T
+                        len(self.validate_terms) * 2, -1).T
 
                     for i, name in enumerate(self.validate_terms):
 
