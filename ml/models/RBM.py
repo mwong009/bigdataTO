@@ -168,8 +168,8 @@ class RestrictedBoltzmannMachine(object):
                     else:
                         masked_visibles.append(v)
                 gibbs_output = self.gibbs_vhv(masked_visibles)
-                y_out = T.nnet.relu(gibbs_output[2:2+len(masked_visibles)][
-                    valid_feature['loc']]).flatten() * self.norms[
+                y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
+                    ][valid_feature['loc']]).flatten() * self.norms[
                     valid_feature['name']]
                 error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
 
@@ -218,11 +218,13 @@ class RestrictedBoltzmannMachine(object):
                         masked_visibles.append(shared(np.zeros(v.shape.eval(),
                                 dtype=theano.config.floatX),
                             name=W.name, borrow=True))
+
                     else:
                         masked_visibles.append(v)
+
                 gibbs_output = self.gibbs_vhv(masked_visibles)
-                y_out = T.nnet.relu(gibbs_output[2:2+len(masked_visibles)][
-                    valid_feature['loc']]).flatten() * self.norms[
+                y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
+                    ][valid_feature['loc']]).flatten() * self.norms[
                     valid_feature['name']]
 
                 output_prediction.extend([y])
@@ -347,7 +349,7 @@ class RestrictedBoltzmannMachine(object):
 
             elif t == 'scale':
                 # for scale features (n, feature)
-                v1_sample = T.nnet.relu(
+                v1_sample = T.nnet.softplus(
                     self.theano_rng.normal(size=mean.shape, avg=pre,
                         std=T.nnet.sigmoid(mean),
                         dtype=theano.config.floatX))
@@ -437,7 +439,7 @@ class RestrictedBoltzmannMachine(object):
             chain_end_samples, self.types):
             if t == 'scale':
                 # L2 loss
-                cost += T.mean((v - mean).norm(2))
+                cost += T.mean((v - sample).norm(2))
             elif t == 'binary':
                 cost += T.mean((v - sample).norm(2))
             elif t == 'category':
