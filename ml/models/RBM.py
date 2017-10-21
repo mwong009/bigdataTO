@@ -156,21 +156,7 @@ class RestrictedBoltzmannMachine(object):
                 # for scale features (n, feature)
                 norm = self.norms[valid_feature['name']]
                 y = valid_feature['target'].flatten() * norm
-
-                # masked_visibles = []
-                # for v, W in zip(visibles, self.W_params):
-                #     if W.name in validate_terms:
-                #         masked_visibles.append(shared(np.zeros(v.shape.eval(),
-                #                 dtype=theano.config.floatX),
-                #             name=W.name, borrow=True))
-                #     else:
-                #         masked_visibles.append(v)
-                # gibbs_output = self.gibbs_vhv(masked_visibles)
-                # y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
-                #     ][valid_feature['loc']]).flatten() * norm
-
                 y_out = T.nnet.softplus(energy).flatten() * norm
-
                 error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
 
             elif valid_feature['type'] == 'binary':
@@ -208,21 +194,6 @@ class RestrictedBoltzmannMachine(object):
                 # for scale features (n, feature)
                 norm = self.norms[valid_feature['name']]
                 y = valid_feature['target'].flatten() * norm
-
-                # masked_visibles = []
-                # for v, W in zip(visibles, self.W_params):
-                #     if W.name in validate_terms:
-                #         masked_visibles.append(shared(np.zeros(v.shape.eval(),
-                #                 dtype=theano.config.floatX),
-                #             name=W.name, borrow=True))
-                #
-                #     else:
-                #         masked_visibles.append(v)
-                #
-                # gibbs_output = self.gibbs_vhv(masked_visibles)
-                # y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
-                #     ][valid_feature['loc']]).flatten() * norm
-
                 y_out = T.nnet.softplus(energy).flatten() * norm
 
                 output_prediction.extend([y])
@@ -233,7 +204,6 @@ class RestrictedBoltzmannMachine(object):
                 y = valid_feature['target'].flatten()
                 prob = T.nnet.sigmoid(energy)
                 p = T.ceil(prob * 3) - 2.
-                error = T.mean(T.neq(p, y)) # accuracy
 
                 output_prediction.extend([y])
                 output_prediction.extend([p])
