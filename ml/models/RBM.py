@@ -15,7 +15,7 @@ class RestrictedBoltzmannMachine(object):
 
         ''' model hyperparameters '''
         self.random_seed = 999
-        self.batch_size = 200
+        self.batch_size = 100
         self.split = 0.7
         self.theano_rng = rs.RandomStreams(self.random_seed)
         self.optimizer = optimizers
@@ -517,17 +517,19 @@ class RestrictedBoltzmannMachine(object):
 
         print('validate terms:', self.validate_terms)
 
-    def initialize_session(self):
+    def initialize_session(self, path):
 
         self.threshold = 0.998
         self.validation_freq = self.num_train_batches // 10
-        self.best_errors = np.asarray(len(self.validate_terms)*[np.inf])
+        self.best_errors = np.ones(len(self.validate_terms))*np.inf
         self.done_looping = False
         self.epoch = 0
 
         self.data_log = pd.DataFrame()
         self.data_log.index.name = 'iteration'
         self.data_output = pd.DataFrame()
+
+        self.path = path + '/' + str(self.num_hidden) + '/'
 
     def one_train_step(self):
 
@@ -546,7 +548,7 @@ class RestrictedBoltzmannMachine(object):
 
                 print(self.data_log.iloc[-1:, :3])
 
-                self.data_log.to_csv('training_stats.csv')
+                self.data_log.to_csv(self.path + 'training_stats.csv')
 
             if (iter + 1) % (self.validation_freq) == 0:
                 errors = self.valid_rbm()
@@ -556,7 +558,7 @@ class RestrictedBoltzmannMachine(object):
                     print(valid_term, 'validation error',
                         '{0:.3f}'.format(np.round(error, 3)))
 
-                self.data_log.to_csv('training_stats.csv')
+                self.data_log.to_csv(self.path + 'training_stats.csv')
 
                 errors = np.asarray(errors)
                 update_threshold = 0
@@ -569,7 +571,7 @@ class RestrictedBoltzmannMachine(object):
                 if update_threshold > 0:
                     best_model = [self.hbias, self.vbias, self.W_params,
                         self.params, self.masks]
-                    with open('model.save', 'wb') as b:
+                    with open(self.path + 'model.save', 'wb') as b:
                         pickle.dump(best_model, b,
                             protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -582,4 +584,4 @@ class RestrictedBoltzmannMachine(object):
                         self.data_output[name] = predictions[:,i*2]
                         self.data_output[name+'_pred'] = predictions[:,i*2+1]
 
-                    self.data_output.to_csv('predictions.csv')
+                    self.data_output.to_csv(self.path + 'predictions.csv')
