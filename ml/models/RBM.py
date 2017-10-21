@@ -499,7 +499,7 @@ class RestrictedBoltzmannMachine(object):
         self.data_log.index.name = 'iteration'
         self.data_output = pd.DataFrame()
 
-        self.path = path + '/' + str(self.num_hidden) + '/'
+        self.path = path + str(self.num_hidden)
 
     def one_train_step(self):
 

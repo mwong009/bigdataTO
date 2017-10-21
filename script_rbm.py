@@ -10,7 +10,7 @@ from ml.models import RestrictedBoltzmannMachine
 from ml.optimizers import sgd, rmsprop, adadelta, nesterov_momentum
 
 def main():
-
+		
     now = datetime.datetime.now()
     path = sys.path[0] + '/results/' + str(now.date()) + '/'
 
@@ -23,7 +23,7 @@ def main():
 
     rbm = RestrictedBoltzmannMachine(optimizers=sgd)
     rbm.batch_size = 20
-    rbm.load_variables(loadedObj, norms, n_hidden=16,
+    rbm.load_variables(loadedObj, norms, n_hidden=32,
         validate=['mode_prime', 'trip_purp', 'trip_km'])
     rbm.build_functions(lr=1e-3, k=1)
 
