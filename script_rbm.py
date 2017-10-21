@@ -12,7 +12,7 @@ from ml.optimizers import sgd, rmsprop, adadelta, nesterov_momentum
 def main():
 
     now = datetime.datetime.now()
-    path = sys.path[0] + '/' + str(now.date()) + '/'
+    path = sys.path[0] + '/results/' + str(now.date()) + '/'
 
     if not os.path.exists(os.path.dirname(path)):
 	    os.makedirs(os.path.dirname(path))
