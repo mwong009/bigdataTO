@@ -29,6 +29,15 @@ class RestrictedBoltzmannMachine(object):
         self.masks = []    # list of tensor gradient masks
         self.params = []   # list of params for gradient calculation
 
+        ''' Theano Shared variables '''
+        self.train_visibles = []    # list of shared variables to inputs
+        self.valid_visibles = []    # list of shared variables to inputs
+
+        self.num_samples = 0        # total number of samples used
+        self.num_hidden = 0         # number of hidden units
+        self.shapes = []            # list of number of features
+        self.types = []             # list of type for each feature
+
     def add_hbias(self, n_hidden):
 
         mask = np.ones((n_hidden,), dtype=np.bool)
@@ -55,30 +64,28 @@ class RestrictedBoltzmannMachine(object):
             tensor_variable = T.matrix(name)
         elif len(n_visible) == 2:
             tensor_variable = T.tensor3(name)
+        else:
+            raise NotImplementedError()
 
         if len(self.hbias) == 0:
             self.add_hbias(n_hidden)
 
         # create masks for W params
         mask = np.ones(size, dtype=np.bool)
-
         W_mask = shared(mask.flatten(), borrow=True)
 
         # create W params with masking
         W_value = uniform(low=-np.sqrt(6/np.sum(size)),
             high=np.sqrt(6/np.sum(size)),
             size=(np.prod(size),))
-
         W = shared(W_value * mask.flatten(), name=name, borrow=True)
 
         # create masks for vbias params
         mask = np.ones(n_visible, dtype=np.bool)
-
         vbias_mask = shared(mask.flatten(), borrow=True)
 
         # create vbias params
         vbias_value = np.zeros(np.prod(n_visible), dtype=theano.config.floatX)
-
         vbias = shared(vbias_value * mask.flatten(), name=name, borrow=True)
 
         # update model parameters
@@ -89,11 +96,9 @@ class RestrictedBoltzmannMachine(object):
         self.masks.extend([W_mask, vbias_mask])
 
     def conditional_energy(self, visibles, validate_terms, valid_term):
-        '''
-            P(y|x) = 1/Z * exp(b_k + sum_i(ln(1+exp(x_j*W_ij + c_i + W_ki))))
+        ''' P(y|x) = 1/Z * exp(b_k + sum_i(ln(1+exp(x_j*W_ij + c_i + W_ki))))
             vx_c = x_j*W_ij + c_i + W_ki
         '''
-        valid_feature = {}
         vx_c = self.hbias[-1] # vx_c: (hid,)
         b_k = 0
 
@@ -103,25 +108,17 @@ class RestrictedBoltzmannMachine(object):
             # get name of variable
             name = W.name
 
-
             # transform weight vector back into a matrix/tensor
             W = W.reshape(size + (self.num_hidden,))
             vbias = vbias.reshape(size)
 
             if name in validate_terms:
                 if name == valid_term:
-                    if t == 'scale':
-                        valid_feature['type'] = t
-                        valid_feature['name'] = name
-                        valid_feature['loc'] = i
-                        target = v
-
-                    else:
-                        valid_feature['type'] = t
-                        valid_feature['name'] = name
-                        vx_c += W
-                        b_k += vbias
-                        target = v
+                    valid_feature = {'type': t, 'name': name, 'loc': i,
+                        'target': v, 'W': W}
+                    b_k += vbias
+                    if t != 'scale':
+                        vx_c += W  # (features, category, hidden)
 
             else:
                 if t == 'category':
@@ -134,55 +131,54 @@ class RestrictedBoltzmannMachine(object):
                     vx_c += T.dot(v, W).dimshuffle(0, 'x', 1)
 
         # energy term to sum over hidden axis
-        energy = b_k + T.sum(T.nnet.softplus(vx_c), axis=-1)
-
-        return energy, valid_feature, target
+        if valid_feature['type'] == 'scale':
+            energy = b_k + T.dot(T.nnet.sigmoid(vx_c), valid_feature['W'].T)
+        else:
+            energy = b_k + T.sum(T.nnet.softplus(vx_c), axis=-1)
+        return energy, valid_feature
 
     def errors(self, visibles, validate_terms):
 
         output_error = []
         for valid_term in validate_terms:
 
-            e, valid_feature, target = self.conditional_energy(
-                visibles, validate_terms, valid_term)
+            energy, valid_feature = self.conditional_energy(visibles,
+                validate_terms, valid_term)
 
             if valid_feature['type']  == 'category':
                 # for categorical features (n, feature, category)
-                probabilities = T.nnet.softmax(e)
-                y = T.argmax(target, axis=-1).flatten()
-                p = T.argmax(probabilities, axis=-1).flatten()
+                probabilities = T.nnet.softmax(energy)
+                y = T.argmax(valid_feature['target'], axis=-1).flatten()
+                p = T.argmax(probabilities, axis=-1)
                 error = T.mean(T.neq(y, p)) # accuracy
-
-                print(valid_feature['name'], p.eval(), y.eval())
 
             elif valid_feature['type']  == 'scale':
                 # for scale features (n, feature)
-                y = target.flatten() * self.norms[valid_feature['name']]
+                norm = self.norms[valid_feature['name']]
+                y = valid_feature['target'].flatten() * norm
 
-                masked_visibles = []
-                for v, W in zip(visibles, self.W_params):
-                    if W.name in validate_terms:
-                        masked_visibles.append(shared(np.zeros(v.shape.eval(),
-                                dtype=theano.config.floatX),
-                            name=W.name, borrow=True))
-                    else:
-                        masked_visibles.append(v)
-                gibbs_output = self.gibbs_vhv(masked_visibles)
-                y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
-                    ][valid_feature['loc']]).flatten() * self.norms[
-                    valid_feature['name']]
+                # masked_visibles = []
+                # for v, W in zip(visibles, self.W_params):
+                #     if W.name in validate_terms:
+                #         masked_visibles.append(shared(np.zeros(v.shape.eval(),
+                #                 dtype=theano.config.floatX),
+                #             name=W.name, borrow=True))
+                #     else:
+                #         masked_visibles.append(v)
+                # gibbs_output = self.gibbs_vhv(masked_visibles)
+                # y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
+                #     ][valid_feature['loc']]).flatten() * norm
+
+                y_out = T.nnet.softplus(energy).flatten() * norm
+
                 error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
-
-                print(valid_feature['name'], y_out.eval(), y.eval())
 
             elif valid_feature['type'] == 'binary':
                 # for binary features (n, feature)
-                y = target.flatten()
-                prob = T.nnet.sigmoid(e)
+                y = valid_feature['target'].flatten()
+                prob = T.nnet.sigmoid(energy)
                 p = T.ceil(prob * 3) - 2.
                 error = T.mean(T.neq(p, y)) # accuracy
-
-                print(valid_feature['name'], p.eval(), y.eval())
 
             else:
                 raise NotImplementedError()
@@ -196,44 +192,46 @@ class RestrictedBoltzmannMachine(object):
         output_prediction = []
         for valid_term in validate_terms:
 
-            e, valid_feature, target = self.conditional_energy(
-                visibles, validate_terms, valid_term)
+            energy, valid_feature = self.conditional_energy(visibles,
+                validate_terms, valid_term)
 
             if valid_feature['type']  == 'category':
                 # for categorical features (n, feature, category)
-                probabilities = T.nnet.softmax(e)
-                y = T.argmax(target, axis=-1).flatten()
-                p = T.argmax(probabilities, axis=-1).flatten()
+                probabilities = T.nnet.softmax(energy)
+                y = T.argmax(valid_feature['target'], axis=-1).flatten()
+                p = T.argmax(probabilities, axis=-1)
 
                 output_prediction.extend([y])
                 output_prediction.extend([p])
 
             elif valid_feature['type']  == 'scale':
                 # for scale features (n, feature)
-                y = target.flatten() * self.norms[valid_feature['name']]
+                norm = self.norms[valid_feature['name']]
+                y = valid_feature['target'].flatten() * norm
 
-                masked_visibles = []
-                for v, W in zip(visibles, self.W_params):
-                    if W.name in validate_terms:
-                        masked_visibles.append(shared(np.zeros(v.shape.eval(),
-                                dtype=theano.config.floatX),
-                            name=W.name, borrow=True))
+                # masked_visibles = []
+                # for v, W in zip(visibles, self.W_params):
+                #     if W.name in validate_terms:
+                #         masked_visibles.append(shared(np.zeros(v.shape.eval(),
+                #                 dtype=theano.config.floatX),
+                #             name=W.name, borrow=True))
+                #
+                #     else:
+                #         masked_visibles.append(v)
+                #
+                # gibbs_output = self.gibbs_vhv(masked_visibles)
+                # y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
+                #     ][valid_feature['loc']]).flatten() * norm
 
-                    else:
-                        masked_visibles.append(v)
-
-                gibbs_output = self.gibbs_vhv(masked_visibles)
-                y_out = T.nnet.softplus(gibbs_output[2:2+len(masked_visibles)
-                    ][valid_feature['loc']]).flatten() * self.norms[
-                    valid_feature['name']]
+                y_out = T.nnet.softplus(energy).flatten() * norm
 
                 output_prediction.extend([y])
                 output_prediction.extend([y_out])
 
             elif valid_feature['type'] == 'binary':
                 # for binary features (n, feature)
-                y = target.flatten()
-                prob = T.nnet.sigmoid(e)
+                y = valid_feature['target'].flatten()
+                prob = T.nnet.sigmoid(energy)
                 p = T.ceil(prob * 3) - 2.
                 error = T.mean(T.neq(p, y)) # accuracy
 
@@ -294,8 +292,10 @@ class RestrictedBoltzmannMachine(object):
         h1_mean = T.nnet.sigmoid(pre_sigmoid_h1)
         h1_samples = self.theano_rng.binomial(size=h1_mean.shape, n=1,
            p=h1_mean, dtype=theano.config.floatX)
-        # h1_samples = T.nnet.relu(self.theano_rng.normal(size=h1_mean.shape,
-        #    avg=pre_sigmoid_h1, std=1.0, dtype=theano.config.floatX))
+        # h1_samples = T.nnet.softplus(self.theano_rng.normal(
+        #    size=h1_mean.shape,
+        #    avg=pre_sigmoid_h1, std=1.0,
+        #    dtype=theano.config.floatX))
 
         return [pre_sigmoid_h1, h1_mean, h1_samples]
 
@@ -449,7 +449,7 @@ class RestrictedBoltzmannMachine(object):
                 raise NotImplementedError()
         return cost
 
-    def build_functions(self, lr=1e-3, k=5):
+    def build_functions(self, lr=1e-3, k=10):
 
         print('building symbolic functions...')
 
@@ -483,18 +483,12 @@ class RestrictedBoltzmannMachine(object):
     def load_variables(self, features, norms, n_hidden, validate):
 
         seed(self.random_seed)
-        self.train_visibles = []    # list of shared variables to inputs
-        self.valid_visibles = []    # list of shared variables to inputs
-        self.shapes = []            # list of number of features
-        self.types = []             # list of type for each feature
+        train_idx = None            # indexing arrays
+        valid_idx = None            # indexing arrays
 
-        self.num_samples = 0        # total number of samples used
+        self.norms = norms              # dict of {scale: norms} values
+        self.validate_terms = validate  # list of terms to validate
         self.num_hidden = n_hidden
-        train_idx = None            # indexing array
-        valid_idx = None
-
-        self.norms = norms
-        self.validate_terms = validate
 
         print('loading variables...')
 
@@ -524,19 +518,19 @@ class RestrictedBoltzmannMachine(object):
         print('validate terms:', self.validate_terms)
 
     def initialize_session(self):
-        self.patience = 5 * self.num_train_batches
-        self.patience_increase = 2
+
         self.threshold = 0.998
         self.validation_freq = self.num_train_batches // 10
         self.best_errors = np.asarray(len(self.validate_terms)*[np.inf])
         self.done_looping = False
         self.epoch = 0
-        self.epoch_score = []
+
         self.data_log = pd.DataFrame()
         self.data_log.index.name = 'iteration'
         self.data_output = pd.DataFrame()
 
     def one_train_step(self):
+
         self.epoch += 1
         this_cost = []
         for minibatch_index in range(self.num_train_batches):
@@ -554,7 +548,7 @@ class RestrictedBoltzmannMachine(object):
 
                 self.data_log.to_csv('training_stats.csv')
 
-            if (iter + 1) % (self.validation_freq * 1) == 0:
+            if (iter + 1) % (self.validation_freq) == 0:
                 errors = self.valid_rbm()
 
                 for valid_term, error in zip(self.validate_terms, errors):
@@ -565,7 +559,6 @@ class RestrictedBoltzmannMachine(object):
                 self.data_log.to_csv('training_stats.csv')
 
                 errors = np.asarray(errors)
-
                 update_threshold = 0
                 for i, (this_error, best_error) in enumerate(zip(errors,
                     self.best_errors * self.threshold)):

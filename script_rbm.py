@@ -14,15 +14,15 @@ def main():
     f = open('dataset.save', 'rb')
     loadedObj, norms = pickle.load(f)
 
-    rbm = RestrictedBoltzmannMachine()
-    rbm.batch_size = 50
-    rbm.load_variables(loadedObj, norms, n_hidden=60,
+    rbm = RestrictedBoltzmannMachine(optimizers=sgd)
+    rbm.batch_size = 20
+    rbm.load_variables(loadedObj, norms, n_hidden=16,
         validate=['mode_prime', 'trip_purp', 'trip_km'])
     rbm.build_functions(lr=1e-3, k=1)
 
     print('training the model...')
 
-    num_epochs = 10
+    num_epochs = 100
     rbm.initialize_session()
     start_time = timeit.default_timer()
     while (rbm.epoch < num_epochs):
@@ -30,25 +30,8 @@ def main():
 
     end_time = timeit.default_timer()
 
-    # with open('dataset.model', 'wb') as m:
-    #     pickle.dump(mlp.best_model, m, protocol=pickle.HIGHEST_PROTOCOL)
-    #
-    # print('Optimization complete with best validation score of %.4f' %
-    #     best_error)
     print('The code ran for %d epochs with %.3f epochs/sec' %
         (rbm.epoch, 1. * rbm.epoch / (end_time - start_time)))
-
-    # target_samples = np.argmax(rbm.valid_y[0].eval(), axis=-1)
-    # output = rbm.valid_rbm()
-    # pred_samples = np.argmax(output[2], axis = -1)
-    #
-    # print(np.equal(pred_samples.flatten(), target_samples.flatten()).mean())
-    #
-    # with open('model.output', 'wb') as m:
-    #     pickle.dump([target_samples.flatten(), pred_samples.flatten()], m,
-    #         protocol=pickle.HIGHEST_PROTOCOL)
-    #
-    # print(output)
 
 if __name__ == '__main__':
     main()
