@@ -514,6 +514,24 @@ class RestrictedBoltzmannMachine(object):
 
         self.path = path + str(self.num_hidden)
 
+        self.print_model_stats()
+
+    def print_model_stats(self):
+
+        with open(self.path + 'model.stats', 'w') as file:
+            file.write('path={}\n'.format(self.path))
+            file.write('seed={}\n'.format(self.random_seed))
+            file.write('batch size={}\n'.format(self.batch_size))
+            file.write('slice={}\n'.format(self.split))
+            file.write('optimizer={}\n'.format(self.optimizer))
+            file.write('num samples={}\n'.format(self.num_samples))
+            file.write('num hidden={}\n'.format(self.num_hidden))
+            file.write('num hidden={}\n'.format(self.num_hidden))
+            file.write('feature shapes={}\n'.format(self.shapes))
+            file.write('feature types={}\n'.format(self.types))
+            file.write('threshold={}\n'.format(self.threshold))
+            file.write('validation freq={}\n'.format(self.validation_freq))
+
     def one_train_step(self):
 
         self.epoch += 1
