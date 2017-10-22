@@ -237,15 +237,17 @@ class RestrictedBoltzmannMachine(object):
             elif W.ndim == 3:
                 # for weights with 3 dimensions (feature, category, hidden)
                 wx_b += T.tensordot(v, W, axes=[[1,2],[0,1]])
-                visible_term += T.tensordot(v, vbias, axes=[[1,2],[0,1]])
+                visible_term += T.tensordot(v, vbias, axes=[[1,2], [0,1]])
 
         hidden_term = T.sum(T.log(1 + T.exp(wx_b)), axis=1)
+
         return - hidden_term - visible_term
 
     def sample_h_given_v(self, v0_samples):
 
-        pre_sigmoid_h1 = self.hbias[-1]
+        h1_preactivation = self.hbias[-1]
 
+        # propagate upstream
         for v, W, size in zip(v0_samples, self.W_params, self.shapes):
 
             # transform weight vector back into a matrix/tensor
@@ -253,21 +255,18 @@ class RestrictedBoltzmannMachine(object):
 
             if W.ndim == 2:
                 # for weights with 2 dimensions (feature, hidden)
-                pre_sigmoid_h1 += T.dot(v, W)
+                h1_preactivation += T.dot(v, W)
 
             elif W.ndim == 3:
                 # for weights with 3 dimensions (feature, category, hidden)
-                pre_sigmoid_h1 += T.tensordot(v, W, axes=[[1,2],[0,1]])
+                h1_preactivation += T.tensordot(v, W, axes=[[1,2], [0,1]])
 
-        h1_mean = T.nnet.sigmoid(pre_sigmoid_h1)
+        # sample ~h given v
+        h1_mean = T.nnet.sigmoid(h1_preactivation)
         h1_samples = self.theano_rng.binomial(size=h1_mean.shape, n=1,
            p=h1_mean, dtype=theano.config.floatX)
-        # h1_samples = T.nnet.softplus(self.theano_rng.normal(
-        #    size=h1_mean.shape,
-        #    avg=pre_sigmoid_h1, std=1.0,
-        #    dtype=theano.config.floatX))
 
-        return [pre_sigmoid_h1, h1_mean, h1_samples]
+        return [h1_preactivation, h1_mean, h1_samples]
 
     def sample_v_given_h(self, h0_samples):
 
@@ -275,7 +274,9 @@ class RestrictedBoltzmannMachine(object):
         v1_mean = []
         v1_samples = []
 
-        for W, vbias, size, t in zip(self.W_params, self.vbias, self.shapes, self.types):
+        # propagate downstream
+        for W, vbias, size, t in zip(self.W_params, self.vbias, self.shapes,
+            self.types):
 
             # transform weight vector back into a matrix/tensor
             name = W.name
@@ -294,21 +295,21 @@ class RestrictedBoltzmannMachine(object):
                 activation = T.nnet.softmax(preactivation)
                 v1_mean.append(activation.reshape((d1, d2, d3)))
 
-            elif t == 'scale':
-                W = W.T
-                preactivation = T.dot(h0_samples, W) + vbias
-                v1_preactivation.append(preactivation)
-                v1_mean.append(preactivation)
-
-            elif t =='binary':
-                W = W.T
-                preactivation = T.dot(h0_samples, W) + vbias
-                v1_preactivation.append(preactivation)
-                v1_mean.append(T.nnet.sigmoid(preactivation))
-
             else:
-                raise NotImplementedError()
+                W = W.T
+                preactivation = T.dot(h0_samples, W) + vbias
+                v1_preactivation.append(preactivation)
 
+                if t == 'scale':
+                    v1_mean.append(preactivation)
+
+                elif t == 'binary':
+                    v1_mean.append(T.nnet.sigmoid(preactivation))
+
+                else:
+                    raise NotImplementedError()
+
+        # sample ~v given h
         for t, mean, pre in zip(self.types, v1_mean, v1_preactivation):
 
             if t == 'category':
@@ -321,9 +322,7 @@ class RestrictedBoltzmannMachine(object):
                 # for scale features (n, feature)
                 v1_sample = T.nnet.softplus(
                     self.theano_rng.normal(size=mean.shape, avg=pre,
-                        std=T.nnet.sigmoid(mean),
-                        dtype=theano.config.floatX))
-                # v1_sample = mean
+                        std=T.nnet.sigmoid(mean), dtype=theano.config.floatX))
                 v1_samples.append(v1_sample)
 
             elif t =='binary':
@@ -379,6 +378,7 @@ class RestrictedBoltzmannMachine(object):
         nv_means = gibbs_chain[:num_tensors]
         nv_samples = gibbs_chain[num_tensors: 2*num_tensors]
 
+        # extract only the end chain samples
         chain_end_samples = []
         chain_end_means = []
         for samples, means in zip(nv_samples, nv_means):
@@ -391,14 +391,19 @@ class RestrictedBoltzmannMachine(object):
         data_cost = T.mean(self.free_energy(self.visibles))
         cost = data_cost - model_cost
 
+        # calculate the gradients
         grads = T.grad(cost, self.params, consider_constant=chain_end_samples)
         opt = self.optimizer(self.params, masks=self.masks)
         updates = opt.updates(self.params, grads, lr)
+
+        # update the Gibbs chain
         for update in updates:
             rbm_updates[update[0]] = update[1]
 
+        # monitor the cross-entropy and L2 loss
         monitoring_cost = self.reconstruction_cost(chain_end_means,
             chain_end_samples)
+
         return monitoring_cost, rbm_updates
 
     def reconstruction_cost(self, chain_end_means, chain_end_samples):
@@ -410,13 +415,17 @@ class RestrictedBoltzmannMachine(object):
             if t == 'scale':
                 # L2 loss
                 cost += T.mean((v - sample).norm(2))
+
             elif t == 'binary':
                 cost += T.mean((v - sample).norm(2))
+
             elif t == 'category':
-                cost -= T.mean(T.sum(v * T.log(mean) +
-                    (1-v) * T.log(1-mean), axis=-1))
+                # cross-entropy loss
+                cost -= T.mean(T.sum(v*T.log(mean) + (1-v)*T.log(1-mean),
+                    axis=-1))
             else:
                 raise NotImplementedError()
+
         return cost
 
     def build_functions(self, lr=1e-3, k=10):
@@ -425,7 +434,7 @@ class RestrictedBoltzmannMachine(object):
 
         cost, updates = self.get_cost_updates(lr, None, k)
 
-        # theano training function
+        # theano training functions
         self.train_rbm = theano.function([self.index],
             outputs=cost,
             updates=updates,
@@ -458,7 +467,7 @@ class RestrictedBoltzmannMachine(object):
 
         self.norms = norms              # dict of {scale: norms} values
         self.validate_terms = validate  # list of terms to validate
-        self.num_hidden = n_hidden
+        self.num_hidden = n_hidden      # int of number of hidden units
 
         print('loading variables...')
 
@@ -470,25 +479,29 @@ class RestrictedBoltzmannMachine(object):
             self.shapes.append(feature.shape[1:])
             self.types.append(d['type'])
 
+            # training and validation random shuffling and splitting
             if train_idx is None:
                 train_idx = permutation(self.num_samples)[
                     :int(self.split * self.num_samples)]
+                self.num_train_batches = train_idx.shape[0] // self.batch_size
+
             if valid_idx is None:
                 valid_idx = permutation(self.num_samples)[
                     int(self.split * self.num_samples):]
+                self.num_valid_batches = valid_idx[0] // self.batch_size
 
+            # load numpy arrays to list of shared variables
             self.train_visibles.append(shared(feature[train_idx]))
             self.valid_visibles.append(shared(feature[valid_idx]))
 
+            # construct the neural network paths
             self.add_visible_unit(name, self.shapes[-1], self.num_hidden)
 
-        self.num_train_batches = train_idx.shape[0] // self.batch_size
-        self.num_valid_batches = valid_idx[0] // self.batch_size
-
-        print('validate terms:', self.validate_terms)
+        print('validation terms:', self.validate_terms)
 
     def initialize_session(self, path):
 
+        # initialize training parameters
         self.threshold = 0.998
         self.validation_freq = self.num_train_batches // 10
         self.best_errors = np.ones(len(self.validate_terms))*np.inf
@@ -505,24 +518,31 @@ class RestrictedBoltzmannMachine(object):
 
         self.epoch += 1
         this_cost = []
+
+        # loop over minibatches
         for minibatch_index in range(self.num_train_batches):
             minibatch_avg_cost = self.train_rbm(minibatch_index)
+
+            # get training cost
             this_cost += [minibatch_avg_cost]
             iter = (self.epoch - 1) * self.num_train_batches + minibatch_index
 
+            # validate every n batches
             if (iter + 1) % self.validation_freq == 0:
+
+                # log training statistics
                 self.data_log.loc[iter, 'epoch'] = int(self.epoch)
                 self.data_log.loc[iter, 'minibatch'] = int(minibatch_index)
                 self.data_log.loc[iter, 'cost'] = np.round(
                     np.mean(this_cost), 5)
 
                 print(self.data_log.iloc[-1:, :3])
-
                 self.data_log.to_csv(self.path + 'training_stats.csv')
 
-            if (iter + 1) % (self.validation_freq) == 0:
-                errors = self.valid_rbm()
+                # calculate validation error for p(y|x)
+                errors = np.asarray(self.valid_rbm())
 
+                # log training statistics
                 for valid_term, error in zip(self.validate_terms, errors):
                     self.data_log.loc[iter, valid_term] = np.round(error, 3)
                     print(valid_term, 'validation error',
@@ -530,7 +550,7 @@ class RestrictedBoltzmannMachine(object):
 
                 self.data_log.to_csv(self.path + 'training_stats.csv')
 
-                errors = np.asarray(errors)
+                # update benchmarks
                 update_threshold = 0
                 for i, (this_error, best_error) in enumerate(zip(errors,
                     self.best_errors * self.threshold)):
@@ -538,9 +558,11 @@ class RestrictedBoltzmannMachine(object):
                         self.best_errors[i] = this_error
                         update_threshold += 1
 
+                # save best model and predictions
                 if update_threshold > 0:
                     best_model = [self.hbias, self.vbias, self.W_params,
                         self.params, self.masks]
+
                     with open(self.path + 'model.save', 'wb') as b:
                         pickle.dump(best_model, b,
                             protocol=pickle.HIGHEST_PROTOCOL)
@@ -550,8 +572,8 @@ class RestrictedBoltzmannMachine(object):
                         len(self.validate_terms) * 2, -1).T
 
                     for i, name in enumerate(self.validate_terms):
-
                         self.data_output[name] = predictions[:,i*2]
                         self.data_output[name+'_pred'] = predictions[:,i*2+1]
 
+                    # save outputs
                     self.data_output.to_csv(self.path + 'predictions.csv')

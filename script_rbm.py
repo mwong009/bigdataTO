@@ -23,7 +23,7 @@ def main():
 
     rbm = RestrictedBoltzmannMachine(optimizers=sgd)
     rbm.batch_size = 20
-    rbm.load_variables(loadedObj, norms, n_hidden=32,
+    rbm.load_variables(loadedObj, norms, n_hidden=4,
         validate=['mode_prime', 'trip_purp', 'trip_km'])
     rbm.build_functions(lr=1e-3, k=1)
 
