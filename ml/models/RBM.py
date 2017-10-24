@@ -112,12 +112,18 @@ class RestrictedBoltzmannMachine(object):
             W = W.reshape(size + (self.num_hidden,))
             vbias = vbias.reshape(size)
 
-            if name in validate_terms:
-                if name == valid_term:
-                    valid_feature = {'type': t, 'name': name, 'W': W}
-                    b_k += vbias
-                    if t != 'scale':
-                        vx_c += W  # (features, category, hidden)
+            if name == valid_term:
+                valid_feature = {'type': t, 'name': name, 'W': W}
+                b_k += vbias
+                if t != 'scale':
+                    vx_c += W  # (features, category, hidden)
+
+            # if name in validate_terms:
+            #     if name == valid_term:
+            #         valid_feature = {'type': t, 'name': name, 'W': W}
+            #         b_k += vbias
+            #         if t != 'scale':
+            #             vx_c += W  # (features, category, hidden)
 
             else:
                 if t == 'category':
