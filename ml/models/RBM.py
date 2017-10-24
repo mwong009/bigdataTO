@@ -148,6 +148,12 @@ class RestrictedBoltzmannMachine(object):
         self.output_prediction = []
         output_targets = {}
 
+        for i, (W, v) in enumerate(zip(self.W_params, visibles)):
+            if W.name in validate_terms:
+                output_targets[W.name] = v
+                visibles[i] = np.zeros(v.shape.eval(),
+                    dtype=theano.config.floatX), name=W.name, borrow=True)
+
         gibbs_output = self.gibbs_vhv(visibles)
         gibbs_output = gibbs_output[-len(visibles):]
 
@@ -366,9 +372,9 @@ class RestrictedBoltzmannMachine(object):
                 v1_sample = self.theano_rng.binomial(size=mean.shape,
                     p=mean, dtype=theano.config.floatX) * 2 - 1
 
-                # flip features between [0, [-1, 1]]
-                # v1_sample = self.theano_rng.binomial(size=mean.shape,
-                #     p=T.abs_(mean*2-1), dtype=theano.config.floatX) * v1_sample
+                flip features between [0, [-1, 1]]
+                v1_sample = self.theano_rng.binomial(size=mean.shape,
+                    p=T.abs_(mean*2-1), dtype=theano.config.floatX) * v1_sample
 
                 v1_samples.append(v1_sample)
 
