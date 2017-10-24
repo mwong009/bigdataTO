@@ -155,10 +155,7 @@ class RestrictedBoltzmannMachine(object):
             gibbs_output)):
             if W.name in validate_terms:
                 output_targets[W.name] = v
-                if s[i].ndim == 2:
-                    visibles[i] = s[i].dimshuffle(0, 'x', 1)
-                else:
-                    visibles[i] = s[i].dimshuffle(0, 'x')
+                visibles[i] = s
 
         for valid_term in validate_terms:
 
