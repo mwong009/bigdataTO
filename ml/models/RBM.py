@@ -128,15 +128,11 @@ class RestrictedBoltzmannMachine(object):
             else:
                 if t == 'category':
                     # for category features (n, 'x', hidden)
-                    if v.ndim == 2:
-                        v = v.dimshuffle(0, 'x', 1)
                     vx_c += T.tensordot(v, W, axes=[[1,2], [0,1]]
                         ).dimshuffle(0, 'x', 1)
 
                 else:
                     # for scale and binary features (n, 'x', hidden)
-                    if v.ndim == 1:
-                        v = v.dimshuffle(0, 'x')
                     vx_c += T.dot(v, W).dimshuffle(0, 'x', 1)
 
         # energy term to sum over hidden axis
@@ -159,7 +155,10 @@ class RestrictedBoltzmannMachine(object):
             gibbs_output)):
             if W.name in validate_terms:
                 output_targets[W.name] = v
-                visibles[i] = s[i]
+                if s[i].ndim == 2:
+                    visibles[i] = s[i].dimshuffle(0, 'x', 1)
+                else:
+                    visibles[i] = s[i].dimshuffle(0, 'x')
 
         for valid_term in validate_terms:
 
