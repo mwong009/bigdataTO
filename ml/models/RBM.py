@@ -193,54 +193,54 @@ class RestrictedBoltzmannMachine(object):
 
         return output_error
 
-    def prediction(self, visibles, validate_terms):
-
-        output_prediction = []
-        output_targets = {}
-        for W, v in zip(self.W_params, visibles):
-            if W.name in validate_terms:
-                output_targets[W.name] = v
-
-        for i in np.arange(2):
-            gibbs_output = self.gibbs_vhv(visibles)
-            visibles = gibbs_output[-len(visibles):]
-
-        for valid_term in validate_terms:
-
-            energy, valid_feature = self.conditional_energy(visibles,
-                validate_terms, valid_term)
-
-            if valid_feature['type']  == 'category':
-                # for categorical features (n, feature, category)
-                probabilities = T.nnet.softmax(energy)
-                y = T.argmax(output_targets[valid_term], axis=-1).flatten()
-                p = T.argmax(probabilities, axis=-1)
-
-                output_prediction.extend([y])
-                output_prediction.extend([p])
-
-            elif valid_feature['type']  == 'scale':
-                # for scale features (n, feature)
-                norm = self.norms[valid_feature['name']]
-                y = output_targets[valid_term].flatten() * norm
-                y_out = T.nnet.softplus(energy).flatten() * norm
-
-                output_prediction.extend([y])
-                output_prediction.extend([y_out])
-
-            elif valid_feature['type'] == 'binary':
-                # for binary features (n, feature)
-                y = output_targets[valid_term].flatten()
-                prob = T.nnet.sigmoid(energy)
-                p = T.ceil(prob * 3) - 2.
-
-                output_prediction.extend([y])
-                output_prediction.extend([p])
-
-            else:
-                raise NotImplementedError()
-
-        return output_prediction
+    # def prediction(self, visibles, validate_terms):
+    #
+    #     output_prediction = []
+    #     output_targets = {}
+    #     for W, v in zip(self.W_params, visibles):
+    #         if W.name in validate_terms:
+    #             output_targets[W.name] = v
+    #
+    #     for i in np.arange(2):
+    #         gibbs_output = self.gibbs_vhv(visibles)
+    #         visibles = gibbs_output[-len(visibles):]
+    #
+    #     for valid_term in validate_terms:
+    #
+    #         energy, valid_feature = self.conditional_energy(visibles,
+    #             validate_terms, valid_term)
+    #
+    #         if valid_feature['type']  == 'category':
+    #             # for categorical features (n, feature, category)
+    #             probabilities = T.nnet.softmax(energy)
+    #             y = T.argmax(output_targets[valid_term], axis=-1).flatten()
+    #             p = T.argmax(probabilities, axis=-1)
+    #
+    #             output_prediction.extend([y])
+    #             output_prediction.extend([p])
+    #
+    #         elif valid_feature['type']  == 'scale':
+    #             # for scale features (n, feature)
+    #             norm = self.norms[valid_feature['name']]
+    #             y = output_targets[valid_term].flatten() * norm
+    #             y_out = T.nnet.softplus(energy).flatten() * norm
+    #
+    #             output_prediction.extend([y])
+    #             output_prediction.extend([y_out])
+    #
+    #         elif valid_feature['type'] == 'binary':
+    #             # for binary features (n, feature)
+    #             y = output_targets[valid_term].flatten()
+    #             prob = T.nnet.sigmoid(energy)
+    #             p = T.ceil(prob * 3) - 2.
+    #
+    #             output_prediction.extend([y])
+    #             output_prediction.extend([p])
+    #
+    #         else:
+    #             raise NotImplementedError()
+    #
+    #     return output_prediction
 
     def free_energy(self, visibles):
         ''' free energy
