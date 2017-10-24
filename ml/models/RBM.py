@@ -151,7 +151,7 @@ class RestrictedBoltzmannMachine(object):
         for i, (W, v) in enumerate(zip(self.W_params, visibles)):
             if W.name in validate_terms:
                 output_targets[W.name] = v
-                visibles[i] = np.zeros(v.shape.eval(),
+                visibles[i] = shared(np.zeros(v.shape.eval(),
                     dtype=theano.config.floatX), name=W.name, borrow=True)
 
         gibbs_output = self.gibbs_vhv(visibles)
