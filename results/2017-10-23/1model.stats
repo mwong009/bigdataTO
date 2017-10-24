@@ -1,0 +1,12 @@
+path=/home/melvin/Github/bigdataTO/results/2017-10-23/1
+seed=999
+batch size=20
+slice=0.7
+optimizer=<class 'ml.optimizers.sgd.sgd'>
+num samples=624845
+num hidden=1
+num hidden=1
+feature shapes=[(1, 9), (1, 6), (1,), (17,), (15,), (1, 6), (7, 7), (7, 9)]
+feature types=['category', 'category', 'scale', 'scale', 'binary', 'category', 'category', 'category']
+threshold=0.998
+validation freq=2186
