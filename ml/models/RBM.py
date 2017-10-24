@@ -139,6 +139,7 @@ class RestrictedBoltzmannMachine(object):
     def errors(self, visibles, validate_terms):
 
         output_error = []
+        self.output_prediction = []
         output_targets = {}
         for i, (W, v) in enumerate(zip(self.W_params, visibles)):
             if W.name in validate_terms:
@@ -162,6 +163,9 @@ class RestrictedBoltzmannMachine(object):
                 p = T.argmax(probabilities, axis=-1)
                 error = T.mean(T.neq(y, p)) # accuracy
 
+                self.output_prediction.extend([y])
+                self.output_prediction.extend([p])
+
             elif valid_feature['type']  == 'scale':
                 # for scale features (n, feature)
                 norm = self.norms[valid_feature['name']]
@@ -169,12 +173,18 @@ class RestrictedBoltzmannMachine(object):
                 y_out = T.nnet.softplus(energy).flatten() * norm
                 error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
 
+                output_prediction.extend([y])
+                output_prediction.extend([y_out])
+
             elif valid_feature['type'] == 'binary':
                 # for binary features (n, feature)
                 y = output_targets[valid_term].flatten()
                 prob = T.nnet.sigmoid(energy)
                 p = T.ceil(prob * 3) - 2.
                 error = T.mean(T.neq(p, y)) # accuracy
+
+                self.output_prediction.extend([y])
+                self.output_prediction.extend([p])
 
             else:
                 raise NotImplementedError()
@@ -351,8 +361,8 @@ class RestrictedBoltzmannMachine(object):
                     p=mean, dtype=theano.config.floatX) * 2 - 1
 
                 # flip features between [0, [-1, 1]]
-                v1_sample = self.theano_rng.binomial(size=mean.shape,
-                    p=T.abs_(mean*2-1), dtype=theano.config.floatX) * v1_sample
+                # v1_sample = self.theano_rng.binomial(size=mean.shape,
+                #     p=T.abs_(mean*2-1), dtype=theano.config.floatX) * v1_sample
 
                 v1_samples.append(v1_sample)
 
@@ -473,7 +483,7 @@ class RestrictedBoltzmannMachine(object):
             on_unused_input='ignore')
 
         self.predict_rbm = theano.function([],
-            outputs=self.prediction(self.valid_visibles, self.validate_terms),
+            outputs=self.output_prediction,
             name='predict_rbm',
             allow_input_downcast=True,
             on_unused_input='ignore')
