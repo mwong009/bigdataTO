@@ -160,7 +160,6 @@ class RestrictedBoltzmannMachine(object):
         for i, (W, v, s) in enumerate(zip(self.W_params, visibles,
             gibbs_output)):
             if W.name in validate_terms:
-                output_targets[W.name] = v
                 visibles[i] = s
 
         for valid_term in validate_terms:
