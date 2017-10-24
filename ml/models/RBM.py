@@ -102,8 +102,8 @@ class RestrictedBoltzmannMachine(object):
         vx_c = self.hbias[-1] # vx_c: (hid,)
         b_k = 0
 
-        for i, (v, W, vbias, size, t) in enumerate(zip(visibles,
-            self.W_params, self.vbias, self.shapes, self.types)):
+        for v, W, vbias, size, t in zip(visibles, self.W_params, self.vbias,
+            self.shapes, self.types):
 
             # get name of variable
             name = W.name
@@ -114,8 +114,7 @@ class RestrictedBoltzmannMachine(object):
 
             if name in validate_terms:
                 if name == valid_term:
-                    valid_feature = {'type': t, 'name': name, 'loc': i,
-                        'target': v, 'W': W}
+                    valid_feature = {'type': t, 'name': name, 'W': W}
                     b_k += vbias
                     if t != 'scale':
                         vx_c += W  # (features, category, hidden)
@@ -132,7 +131,7 @@ class RestrictedBoltzmannMachine(object):
 
         # energy term to sum over hidden axis
         if valid_feature['type'] == 'scale':
-            energy = b_k + T.dot(T.nnet.sigmoid(vx_c), valid_feature['W'].T)
+            energy = b_k + T.dot(T.round(T.nnet.sigmoid(vx_c)), valid_feature['W'].T)
         else:
             energy = b_k + T.sum(T.nnet.softplus(vx_c), axis=-1)
         return energy, valid_feature
@@ -140,6 +139,13 @@ class RestrictedBoltzmannMachine(object):
     def errors(self, visibles, validate_terms):
 
         output_error = []
+        output_targets = {}
+        for i, (W, v) in enumerate(zip(self.W_params, visibles)):
+            if W.name in validate_terms:
+                output_targets[W.name] = v
+                visibles[i] = shared(np.zeros(v.shape.eval(),
+                    dtype=theano.config.floatX), name=W.name, borrow=True)
+
         for valid_term in validate_terms:
 
             energy, valid_feature = self.conditional_energy(visibles,
@@ -148,20 +154,20 @@ class RestrictedBoltzmannMachine(object):
             if valid_feature['type']  == 'category':
                 # for categorical features (n, feature, category)
                 probabilities = T.nnet.softmax(energy)
-                y = T.argmax(valid_feature['target'], axis=-1).flatten()
+                y = T.argmax(output_targets[valid_term], axis=-1).flatten()
                 p = T.argmax(probabilities, axis=-1)
                 error = T.mean(T.neq(y, p)) # accuracy
 
             elif valid_feature['type']  == 'scale':
                 # for scale features (n, feature)
                 norm = self.norms[valid_feature['name']]
-                y = valid_feature['target'].flatten() * norm
+                y = output_targets[valid_term].flatten() * norm
                 y_out = T.nnet.softplus(energy).flatten() * norm
                 error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
 
             elif valid_feature['type'] == 'binary':
                 # for binary features (n, feature)
-                y = valid_feature['target'].flatten()
+                y = output_targets[valid_term].flatten()
                 prob = T.nnet.sigmoid(energy)
                 p = T.ceil(prob * 3) - 2.
                 error = T.mean(T.neq(p, y)) # accuracy
@@ -176,6 +182,11 @@ class RestrictedBoltzmannMachine(object):
     def prediction(self, visibles, validate_terms):
 
         output_prediction = []
+        output_targets = {}
+        for W, v in zip(self.W_params, visibles):
+            if W.name in validate_terms:
+                output_targets[W.name] = v
+
         for valid_term in validate_terms:
 
             energy, valid_feature = self.conditional_energy(visibles,
@@ -184,7 +195,7 @@ class RestrictedBoltzmannMachine(object):
             if valid_feature['type']  == 'category':
                 # for categorical features (n, feature, category)
                 probabilities = T.nnet.softmax(energy)
-                y = T.argmax(valid_feature['target'], axis=-1).flatten()
+                y = T.argmax(output_targets[valid_term], axis=-1).flatten()
                 p = T.argmax(probabilities, axis=-1)
 
                 output_prediction.extend([y])
@@ -193,7 +204,7 @@ class RestrictedBoltzmannMachine(object):
             elif valid_feature['type']  == 'scale':
                 # for scale features (n, feature)
                 norm = self.norms[valid_feature['name']]
-                y = valid_feature['target'].flatten() * norm
+                y = output_targets[valid_term].flatten() * norm
                 y_out = T.nnet.softplus(energy).flatten() * norm
 
                 output_prediction.extend([y])
@@ -201,7 +212,7 @@ class RestrictedBoltzmannMachine(object):
 
             elif valid_feature['type'] == 'binary':
                 # for binary features (n, feature)
-                y = valid_feature['target'].flatten()
+                y = output_targets[valid_term].flatten()
                 prob = T.nnet.sigmoid(energy)
                 p = T.ceil(prob * 3) - 2.
 
