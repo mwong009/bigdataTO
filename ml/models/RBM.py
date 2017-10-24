@@ -372,7 +372,7 @@ class RestrictedBoltzmannMachine(object):
                 v1_sample = self.theano_rng.binomial(size=mean.shape,
                     p=mean, dtype=theano.config.floatX) * 2 - 1
 
-                flip features between [0, [-1, 1]]
+                # flip features between [0, [-1, 1]]
                 v1_sample = self.theano_rng.binomial(size=mean.shape,
                     p=T.abs_(mean*2-1), dtype=theano.config.floatX) * v1_sample
 
