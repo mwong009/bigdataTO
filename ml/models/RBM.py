@@ -146,6 +146,10 @@ class RestrictedBoltzmannMachine(object):
                 visibles[i] = shared(np.zeros(v.shape.eval(),
                     dtype=theano.config.floatX), name=W.name, borrow=True)
 
+        for i in np.arange(3):
+            gibbs_output = self.gibbs_vhv(visibles)
+            visibles = gibbs_output[-len(visibles):]
+
         for valid_term in validate_terms:
 
             energy, valid_feature = self.conditional_energy(visibles,
@@ -186,6 +190,10 @@ class RestrictedBoltzmannMachine(object):
         for W, v in zip(self.W_params, visibles):
             if W.name in validate_terms:
                 output_targets[W.name] = v
+
+        for i in np.arange(3):
+            gibbs_output = self.gibbs_vhv(visibles)
+            visibles = gibbs_output[-len(visibles):]
 
         for valid_term in validate_terms:
 
