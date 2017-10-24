@@ -147,14 +147,13 @@ class RestrictedBoltzmannMachine(object):
         output_error = []
         self.output_prediction = []
         output_targets = {}
-        for i, (W, v) in enumerate(zip(self.W_params, visibles)):
-            if W.name in validate_terms:
-                output_targets[W.name] = v
-                visibles[i] = shared(np.zeros(v.shape.eval(),
-                    dtype=theano.config.floatX), name=W.name, borrow=True)
 
         gibbs_output = self.gibbs_vhv(visibles)
-        visibles = gibbs_output[-len(visibles):]
+        for i, (W, v, s) in enumerate(zip(self.W_params, visibles,
+            gibbs_output[-len(visibles):])):
+            if W.name in validate_terms:
+                output_targets[W.name] = v
+                visibles[i] = s[i]
 
         for valid_term in validate_terms:
 
