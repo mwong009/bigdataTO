@@ -173,8 +173,8 @@ class RestrictedBoltzmannMachine(object):
                 y_out = T.nnet.softplus(energy).flatten() * norm
                 error = T.sqrt(T.mean(T.sqr(y_out - y))) # RMSE error
 
-                output_prediction.extend([y])
-                output_prediction.extend([y_out])
+                self.output_prediction.extend([y])
+                self.output_prediction.extend([y_out])
 
             elif valid_feature['type'] == 'binary':
                 # for binary features (n, feature)
